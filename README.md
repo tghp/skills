@@ -11,8 +11,8 @@ pnpx skills add tghp/skills --skill='*'
 Or for individual skills
 
 ```
-pnpx skills add tghp/skills --skill='tghp-wp-project'
-pnpx skills add tghp/skills --skill='maintenance-js'
+pnpx skills add tghp/skills --skill tghp-wp-project
+pnpx skills add tghp/skills --skill maintenance-js
 ```
 
 ### Extra Steps
