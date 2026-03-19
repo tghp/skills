@@ -8,6 +8,13 @@ Curated collection of skills for TGHP workflows.
 pnpx skills add tghp/skills --skill='*'
 ```
 
+Or for individual skills
+
+```
+pnpx skills add tghp/skills --skill='tghp-wp-project'
+pnpx skills add tghp/skills --skill='maintenance-js'
+```
+
 ### Extra Steps
 
 The following skills use bun scripts for automation of package/project versions and require navigating to the skill directory to run `bun install`:
