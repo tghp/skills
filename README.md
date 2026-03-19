@@ -21,6 +21,10 @@ The following skills use bun scripts for automation of package/project versions 
 
 - [maintenance-js](./skills/maintenance-js/)
 
+The following skills use the GitHub API and require an access token added as an export (i.e. in `~/.zshrc` or equivalent) setting `GITHUB_PERSONAL_ACCESS_TOKEN`
+
+- [maintenance-js](./skills/maintenance-js/)
+
 ## Skills
 
 | Skill | Description |
