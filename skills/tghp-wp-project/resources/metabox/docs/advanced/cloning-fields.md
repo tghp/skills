@@ -1,0 +1,140 @@
+# Cloning fields
+
+The clone feature of Meta Box allows you to create multiple inputs from a text, textarea, select, ... fields without declaring many fields in the code. Combining the clone feature with [groups](https://docs.metabox.io/cloning-fields/extensions/meta-box-group/) gives you a flexible way to define repeatable content.
+
+Clone is a feature
+
+The difference between Meta Box and other plugins is that the clone feature can be applied to **all field types**. And **it's a feature, not a field type**. Then, every field or group can be cloneable or repeater. They are called cloneable fields or cloneable groups.
+
+## Making a field cloneable[​](#making-a-field-cloneable "Direct link to Making a field cloneable")
+
+When editing a field, turn on this **Cloneable** option in the settings of the field:
+
+After turning in the Cloneable option, other clone settings will appear.
+
+info
+
+The instruction above uses [MB Builder](https://docs.metabox.io/cloning-fields/extensions/meta-box-builder/), an extension providing the UI to create fields, and is already bundled in [Meta Box Lite](https://metabox.io/lite/) and [Meta Box AIO](https://docs.metabox.io/cloning-fields/extensions/meta-box-aio/). If you prefer to use code, please see below.
+
+No matter what you are using the UI or code, this is a brief description of the clone settings. The keys are for reference in code.
+
+| Settings             | Key                 | Description                                                                                    |
+| -------------------- | ------------------- | ---------------------------------------------------------------------------------------------- |
+| Cloneable            | clone               | Make the field cloneable? true or false (default). Optional.                                   |
+| Sortable             | sort\_clone         | Allow to drag-and-drop sort clones. true or false (default).                                   |
+| Clone default value  | clone\_default      | Clone the default value of the field? true or false (default).                                 |
+| Clone as multiple    | clone\_as\_multiple | Whether to store cloned values in multiple rows in the database                                |
+| Max number of clones | max\_clone          | Limit the number of clones. Must be greater than 2\. Optional.                                 |
+| Min number of clones | min\_clone          | Minimum number of clones. Optional.                                                            |
+| Add more text        | add\_button         | The text for **Add more** clone button. Optional. Default "+ Add more".                        |
+| Clone empty start    | clone\_empty\_start | Allows no fields except the **Add more** button to show up. true or false (default). Optional. |
+
+After saving the field group, in the post editor, you'll see an **\+ Add more** button below the field input. Clicking it allows you to enter more values:
+
+If you're a developer and want to use code, then you need to add the clone settings into the [field settings](https://docs.metabox.io/cloning-fields/creating-fields-with-code/#fields):
+
+```
+add_filter( 'rwmb_meta_boxes', function ( $meta_boxes ) {
+	$meta_boxes[] = [
+		'title'      => 'Event details',
+		'post_types' => 'event',
+		'fields'     => [
+			[
+				'name'  => 'Date and time',
+				'id'    => 'datetime',
+				'type'  => 'datetime',
+				'clone' => true,
+				// Other clone settings
+			],
+			[
+				'name' => 'Location',
+				'id'   => 'location',
+				'type' => 'text',
+			],
+			[
+				'name'          => 'Map',
+				'id'            => 'map',
+				'type'          => 'osm',
+				'address_field' => 'location',
+			],
+		],
+	];
+
+	return $meta_boxes;
+} );
+
+```
+
+## Data of cloneable fields[​](#data-of-cloneable-fields "Direct link to Data of cloneable fields")
+
+For cloneable fields, values are stored as a serialized array in a single row in the database, unless you set `'clone_as_multiple' => true`.
+
+Using serialized data has some benefits:
+
+* Works for all field types, including nested groups.
+* Works perfectly with the helper function or with WordPress's `get_post_meta` function (WordPress automatically deserializes string and returns an array).
+* Reduces the database size (number of rows), especially when you have nested groups of many fields.
+
+## Query posts by cloneable fields[​](#query-posts-by-cloneable-fields "Direct link to Query posts by cloneable fields")
+
+By default, cloned values are stored as a serialized array, which doesn't allow you to query posts by these values. For example, if you have a cloneable field `start_date` for the `event` post type, and you want to query events in May 2019 like this:
+
+```
+$args = [
+	'post_type'  => 'event',
+	'meta_query' => [
+		[
+			'key'     => 'start_date', // This field is cloneable
+			'value'   => ['2019-05-01', '2019-05-31']
+			'compare' => 'BETWEEN',
+		],
+	],
+];
+$query = new WP_Query( $args );
+
+```
+
+Then it doesn't work.
+
+To solve this problem, you need to enable the **Clone as multiple** settings for the field.
+
+With that, Meta Box will **save cloneable values in multiple rows in the database**, where each row contains one value. That means if `start_date` has 2 values `['2019-05-01', '2019-04-30']`, it will be saved in 2 rows in the database, one for `2019-05-01` and one for `2019-04-30`. The data is **not serialized** anymore. And thus, your above query will work!
+
+## Default values[​](#default-values "Direct link to Default values")
+
+When making a field to be cloneable, its data is an array of cloned values. So, the `std` parameter (default value) should represent this structure, e.g. array of cloned values.
+
+```
+add_filter( 'rwmb_meta_boxes', function ( $meta_boxes ) {
+	$meta_boxes[] = [
+		'title'      => 'Event details',
+		'post_types' => 'event',
+		'fields'     => [
+			[
+				'name'  => 'Date and time',
+				'id'    => 'datetime',
+				'type'  => 'datetime',
+				'clone' => true,
+				'std' => [
+					'2022-04-20',
+					'2022-04-21',
+				],
+			],
+			[
+				'name' => 'Location',
+				'id'   => 'location',
+				'type' => 'text',
+			],
+			[
+				'name'          => 'Map',
+				'id'            => 'map',
+				'type'          => 'osm',
+				'address_field' => 'location',
+			],
+		],
+	];
+
+	return $meta_boxes;
+} );
+
+```

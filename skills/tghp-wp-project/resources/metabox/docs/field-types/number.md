@@ -1,0 +1,73 @@
+# Number
+
+The number field creates a simple HTML5 number input. You can enter a number or use the up/down arrow to change the number. It works with both integers and float numbers.
+
+## Screenshots[​](#screenshots "Direct link to Screenshots")
+
+The number field interface
+
+The number field settings
+
+## Settings[​](#settings "Direct link to Settings")
+
+This meta number field inherits all settings from the [text field](https://docs.metabox.io/fields/number/fields/text/). Besides, it has the following specific settings, the keys are for use with code:
+
+| Name      | Key  | Description                                                                                                                                   |
+| --------- | ---- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| Step      | step | The increments for the value. Accepts an integer, a float number, or the string any (if you want to enter any value). Default is 1. Optional. |
+| Min value | min  | Minimum value. Optional.                                                                                                                      |
+| Max value | max  | Maximum value. Optional.                                                                                                                      |
+
+This is a sample field settings array when creating this field with code:
+
+```
+[
+    'name' => 'Number',
+    'id'   => 'number',
+    'type' => 'number',
+    'min'  => 0,
+    'step' => 0.5,
+],
+
+```
+
+## Data[​](#data "Direct link to Data")
+
+This meta number field saves the entered value into the database.
+
+If the field is cloneable, then the value is stored as a serialized array in a single row in the database.
+
+## Template usage[​](#template-usage "Direct link to Template usage")
+
+**Displaying the value:**
+
+```
+<p>Entered: <?php rwmb_the_value( 'my_field_id' ) ?></p>
+
+```
+
+**Getting the value:**
+
+```
+<?php $value = rwmb_meta( 'my_field_id' ) ?>
+<p>Entered: <?= $value ?></p>
+
+```
+
+**Formatting the value:**
+
+```
+<?php $value = rwmb_meta( 'my_field_id' ) ?>
+<p>Entered: <?= number_format( $value ) ?></p>
+
+```
+
+**Displaying cloneable values:**
+
+```
+<?php $values = rwmb_meta( 'my_field_id' ) ?>
+<?php foreach ( $values as $value ) : ?>
+    <p><?= $value ?></p>
+<?php endforeach ?>
+
+```
