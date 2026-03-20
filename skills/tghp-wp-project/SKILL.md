@@ -101,7 +101,8 @@ The theme and the site plugin are tightly coupled in the project, as such you'll
 - Auto-discovers entry points in `src/themes/<name>/assets/src/` — JS in `js/` and SCSS in `sass/`
 - Compiles to `src/themes/<name>/assets/dist/`
 - Provides HMR dev server integration with WordPress (via `VITE_HMR` and `VITE_PORT` env vars)
-- Supports Preact out of the box (`preact: true`)
+- Supports React (and associated JSX support) out of the box (`react: true`)
+- Aditionally supports Preact if desired (`preact: true`, `react` must also be `true`)
 - Extends via an `alterConfig` callback for project-specific Vite config
 
 The `vite.config.mts` at the project root imports vitepress and passes it project-level config. The template includes support for exclusive build modes (`--scripts` / `--styles` flags) for faster iteration when only one asset type needs rebuilding.
@@ -141,7 +142,7 @@ These projects use [Meta Box AIO](https://metabox.io/) (not ACF) for custom fiel
 
 - `Metaboxio\Metabox` — Field group definitions, settings pages. Uses the definer pattern with `MetaboxDefinerInterface`.
 - `Metaboxio\Block` — Gutenberg blocks via Meta Box's `mb-blocks` extension. Uses `BlockDefinerInterface`. Restricts allowed block types via `setAllowedBlockTypes()` — only custom blocks in the `<name>-blocks` category plus a configurable set of core blocks (typically image, paragraph, heading, list, embed — check the method for the project's specific allowlist). Different post types may have different allowed sets.
-- `Metaboxio\Form` — Frontend forms via Meta Box.
+- `Metaboxio\Form` — Frontend forms via the `tghp-mb-contact` plugin and Meta Box's `mb-frontend-submission` extension. Not all projects have forms — check for `src/plugins/tghp-mb-contact/`. **Before creating or modifying any frontend forms, you must read `resources/forms-guide.md`** — it covers the form definition structure, field options, rendering in templates, post-processing, validation, and email notifications. Forms have their own field prefix (`_tghpcontact_`) and a different definition structure to metabox field groups.
 
 ### Field key prefixing
 
@@ -210,6 +211,7 @@ This project's structure differs from typical WordPress — most logic lives in 
 | New taxonomy           | `inc/Taxonomy/` in site plugin          | Extend `AbstractTaxonomy`, set `$taxonomyCode` + `$postTypeCode`, add to `Taxonomy::_getDefiners()`  |
 | New custom fields      | `inc/Metaboxio/Metabox/` in site plugin | Extend `AbstractMetabox`, implement `MetaboxDefinerInterface`, add to `Metabox::_getDefiners()`      |
 | New Gutenberg block    | `inc/Metaboxio/Block/` in site plugin   | Extend `AbstractBlock`, override `define()`, add to `Block::_getDefiners()`                          |
+| New frontend form      | `inc/Metaboxio/Form/` in site plugin    | Implement `FormDefinerInterface`, add to `Form::_getDefiners()` (requires `tghp-mb-contact` plugin)  |
 | New REST API endpoint  | `inc/Api/` in site plugin               | Implement `ApiDefinerInterface`, add to `Api::getDefiners()`                                         |
 | New page template      | Theme root (e.g. `template-about.php`)  | Create template file + matching critical CSS entry point                                             |
 | New JS behaviour       | `assets/src/js/` in theme               | Create Groundwork component, import and register in `main.ts`                                        |
@@ -230,6 +232,7 @@ When working on specific domains, read the relevant resource before making chang
 | Post types, taxonomies, API endpoints  | `resources/definer-pattern.md`     |
 | Custom fields, settings pages          | `resources/metabox-patterns.md`    |
 | Gutenberg blocks                       | `resources/blocks-guide.md`        |
+| Frontend forms                         | `resources/forms-guide.md`         |
 | JS components, interactivity           | `resources/groundwork-guide.md`    |
 | SCSS partials, new entry points        | `resources/sass-structure.md`      |
 | CSS loading, critical CSS, inheritance | `resources/critical-css.md`        |
