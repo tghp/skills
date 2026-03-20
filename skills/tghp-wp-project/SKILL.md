@@ -34,13 +34,15 @@ The `src/` directory is the boundary: everything in it is "ours", everything out
 ## The Site Plugin
 
 Location: src/plugins/<name>-site/
-PSR-4 Namespace: `\TGHP\<Name>` (where `<Name>` is a PascalCase version of `<name>`, e.g. "hello-world" → `HelloWorld`, "acme" → `Acme`)
+Namespace: `\TGHP\<Name>` (where `<Name>` is a PascalCase version of `<name>`, e.g. "hello-world" → `HelloWorld`, "acme" → `Acme`)
+
+The plugin uses a custom autoloader (via `spl_autoload_register`), not Composer's PSR-4. The mapping is the same in practice — `\TGHP\<Name>\PostType\Event` resolves to `inc/PostType/Event.php` — but be aware this is a hand-rolled autoloader, not a Composer classmap.
 
 ### Architecture
 
 The bulk of the plugin's code lives inside `inc/` of the plugin directory:
 
-- A singleton orchestrator instantiates all subsystems
+- A singleton orchestrator instantiates all subsystems and sets up Monolog-based debug logging (to `wp-content/log/tghp-<name>-site/debug.log`)
 - Subclasses are organised into domains and added as public properties to the orchestrator class
   - Some manage "entities" using a definer pattern, for declarative registration of post types, taxonomies, blocks, forms, crons via classes implementing `DefinerInterface`
 
@@ -54,11 +56,11 @@ The orchestrator is available for access outside of the plugin via the `_S()` gl
 
 ### Core Subclasses
 
-These classes should always be present, and within the PSR-4 namespace defined earlier:
+These classes should always be present, and within the namespace defined earlier:
 
 - Name - The singleton orchestrator
 - Abstract<Name> - Base class that all classes inherit from (provides access back to the orchestrator via `$this-><name>`, where the property name is the lowercased class name, e.g. `$this->helloWorld` for `HelloWorld`)
-- Admin - WP admin area
+- Admin - WP admin area customisation; includes `controlEditor()` which disables the Gutenberg block editor for specific page templates that use Meta Box fields instead
 - Api - REST API route registration (uses a definer-like pattern but manages its own definer array rather than extending `AbstractDefines`)
 - Asset - Utilities surrounding asset output
 - Enqueues - Style/script enqueues
@@ -71,11 +73,18 @@ These classes should always be present, and within the PSR-4 namespace defined e
 - Taxonomy - Definer for any taxonomies added
 - Template - Locates template files using the theme file inheritance chain (child theme → parent theme → plugin)
 - ThemeSupports - Manages theme support definitions
+- Dev - Vite HMR integration; manages dev server script injection and hot-reloading of CSS/JS
 - Util - Misc utils
 
 ### Other classes
 
 Most projects will contain other classes for project specific functionality. You'll find these alongside the core classes.
+
+## The Definer Pattern
+
+The definer pattern is how post types, taxonomies, metabox field groups, blocks, forms, and API routes are registered. Each entity gets its own class that extends an abstract base and overrides `define()`.
+
+**Before creating any new post type, taxonomy, block, field group, form, or API endpoint, you must read `resources/definer-pattern.md`.** It contains the full interface/abstract base class reference, worked examples for post types, taxonomies, and API routes, and the step-by-step process for adding a new definer. Getting the class structure wrong is the most common mistake — the reference doc prevents this.
 
 ## The Site Theme
 
@@ -101,10 +110,10 @@ npm scripts:
 
 - `npm run dev` — HMR dev server (requires `VITE_HMR=1` and `VITE_PORT` in `.env`)
 - `npm run watch` — production-like watch builds
-- `npm run watch:styles` / `watch:scripts` — single asset type watch
+- `npm run watch:styles` / `watch:scripts` — single asset type watch (may not be present in older projects)
 - `npm run build` — production build
 
-Builds are typically very fast in so it is viable to use `npm run build` as a method of checking for errors in script and/or styles.
+Builds are typically very fast so it is viable to use `npm run build` as a method of checking for errors in script and/or styles.
 
 #### Scripts
 
@@ -114,151 +123,15 @@ Scripts are enqueued as ES modules via `wp_enqueue_script_module()` (WordPress 6
 
 #### Groundwork
 
-`@tghp/groundwork.js` is TGHP's lightweight frontend framework for organising JS that runs on every page and binding component behaviour to DOM elements.
+`@tghp/groundwork.js` is TGHP's lightweight frontend framework for organising JS that runs on every page and binding component behaviour to DOM elements. It uses a namespace-based system where components are bound to DOM elements via `data-gw-{namespace}-init` attributes.
 
-A `Groundwork` instance is created with a namespace (e.g. `'main'`). The namespace determines the data attribute prefix used for component binding. A typical entry point:
-
-```typescript
-import Groundwork from '@tghp/groundwork.js';
-import globalInclude from './main/includes/globals';
-import videoComponent from './main/components/video';
-
-const groundworkMain = new Groundwork('main');
-
-// Includes run on every page as soon as groundwork runs
-groundworkMain.includes.add('globals', globalInclude);
-
-// Components bind to DOM elements via data-gw-main-init attributes
-groundworkMain.components.add('video', videoComponent);
-
-groundworkMain.run();
-```
-
-**Includes** run immediately on every page. Each should export a function that is called with no arguments.
-
-**Components** are triggered by `data-gw-{namespace}-init` attributes on DOM elements. The attribute value is JSON where keys map to registered component names:
-
-```html
-<div data-gw-main-init='{"video": { "id": 123, "autoplay": false }}'></div>
-```
-
-This pattern also provides a clean route to passing data from PHP to a component:
-
-```php
-<?php
-$videoArgs = [
-  'video' => [
-    'id' => $videoId,
-    'autoplay' => $autoplay,
-  ]
-];
-?>
-<div data-gw-main-init='<?= json_encode($videoArgs) =>'></div>
-```
-
-A component should export a function that receives the DOM element and args:
-
-```typescript
-import { ComponentFunction } from '@tghp/groundwork.js';
-
-type VideoArgs = {
-  id: number;
-  autoplay?: boolean;
-};
-
-const videoComponent: ComponentFunction<HTMLDivElement, VideoArgs> = (
-  elem, // type is HTMLDivElement
-  args // type is VideoArgs
-) => {
-  const { id, autoplay } = args;
-  // Component logic here
-};
-
-export default videoComponent;
-```
-
-While there is no end-to-end typesafety here between PHP and TS, it's worth defining the types anyway for the sake of DX.
-
-If a component function returns a value (e.g. an API object), Groundwork stores it as an instance accessible via `getInstance`.
-
-Adding a new Groundwork namespace (e.g. for a distinct JS bundle) requires a corresponding enqueue in the `Enqueues` class — follow the existing pattern in `Enqueues::enqueueScripts()`.
+**Before writing or modifying any JS component, you must read `resources/groundwork-guide.md`.** It covers the component/include pattern, typed component args, passing data from PHP to JS, using multiple namespaces, and mounting React components via Groundwork. Writing JS in this project without understanding Groundwork will produce code that doesn't integrate with the existing architecture.
 
 #### Styles
 
-We use SASS with a critical/non-critical CSS splitting architecture. Before writing or modifying any styles, you must first read `resources/sass-structure.md` — it covers the directory layout, entry point conventions, the `--critical`/`--non-critical` naming pattern, and how to create new style entry points that the Asset class will auto-discover.
+We use SASS with a critical/non-critical CSS splitting architecture. **Before writing or modifying any styles, you must read `resources/sass-structure.md`** — it covers the directory layout, entry point conventions, and the `--critical`/`--non-critical` naming pattern.
 
-## The Definer Pattern
-
-The definer pattern is the primary mechanism for declaratively registering WordPress entities (post types, taxonomies, metabox field groups, blocks, forms, API routes). Rather than scattering `register_post_type()` calls across the codebase, each entity is encapsulated in a definer class that implements the appropriate interface.
-
-### How it works
-
-`AbstractDefines` is the base class. Subclasses like `PostType`, `Taxonomy`, and the Metaboxio classes extend it. On `init` (priority 1), `processDefiners()` iterates over definer instances returned by `_getDefiners()`, validates they implement `DefinerInterface`, and calls `_processDefiner()` on each. The parent class then handles the actual WordPress registration at the appropriate hook.
-
-External code can add definers via filters:
-
-- `tghp_add_definers` — global, applies to all definer managers
-- `tghp_add_definers_{classname}` — scoped to a specific manager (lowercased FQCN)
-
-### Definer interfaces
-
-All definers implement `DefinerInterface` which requires a single `define(): array` method. Specialised interfaces extend it:
-
-| Interface                  | Additional methods                                                 | Used by             |
-| -------------------------- | ------------------------------------------------------------------ | ------------------- |
-| `PostTypeDefinerInterface` | `getPostTypeCode(): string`                                        | `PostType`          |
-| `TaxonomyDefinerInterface` | `getTaxonomyCode(): string`, `getAssociatedPostTypeCode(): string` | `Taxonomy`          |
-| `MetaboxDefinerInterface`  | (none beyond define)                                               | `Metaboxio\Metabox` |
-| `BlockDefinerInterface`    | `getCode(): string`, `getId(): string`, `render(): void`           | `Metaboxio\Block`   |
-| `FormDefinerInterface`     | (varies)                                                           | `Metaboxio\Form`    |
-
-Note: `Api` uses a similar definer-like pattern with `ApiDefinerInterface` (`getRoute()`, `getType()`, `handle($data)`) but manages its own definer array rather than extending `AbstractDefines`. Add API definers to `Api::getDefiners()`, not `_getDefiners()`.
-
-### Adding a new definer
-
-1. Create the definer class in the appropriate subdirectory (e.g. `inc/PostType/`)
-2. Implement the relevant interface
-3. Add an instance to the `_getDefiners()` array of the parent manager
-
-**Example — registering a post type:**
-
-File: `inc/PostType/EventPostType.php`
-
-```php
-namespace TGHP\<Name>\PostType;
-
-class EventPostType implements PostTypeDefinerInterface
-{
-    public function getPostTypeCode(): string
-    {
-        return 'event';
-    }
-
-    public function define(): array
-    {
-        return [
-            'label' => 'Events',
-            'public' => true,
-            'has_archive' => true,
-            'supports' => ['title', 'editor', 'thumbnail'],
-            'menu_icon' => 'dashicons-calendar-alt',
-        ];
-    }
-}
-```
-
-Then in `PostType.php`, add it to `_getDefiners()`:
-
-```php
-protected function _getDefiners()
-{
-    return [
-        new PostType\EventPostType(),
-    ];
-}
-```
-
-The same pattern applies to taxonomies, metabox field groups, and blocks — create a class implementing the right interface, return it from `_getDefiners()`. For API routes, the pattern is similar but uses `Api::getDefiners()` instead (see the note above).
+**Before working on the CSS system itself (how CSS is discovered, output, or loaded), read `resources/critical-css.md`** — it explains the Asset class, how CSS files are resolved per page context, where the output methods are called (`header.php`), and the template inheritance chain.
 
 ## Meta Box Integration
 
@@ -267,7 +140,7 @@ These projects use [Meta Box AIO](https://metabox.io/) (not ACF) for custom fiel
 ### Key classes
 
 - `Metaboxio\Metabox` — Field group definitions, settings pages. Uses the definer pattern with `MetaboxDefinerInterface`.
-- `Metaboxio\Block` — Gutenberg blocks via Meta Box's `mb-blocks` extension. Uses `BlockDefinerInterface`. Restricts allowed block types to only those explicitly defined.
+- `Metaboxio\Block` — Gutenberg blocks via Meta Box's `mb-blocks` extension. Uses `BlockDefinerInterface`. Restricts allowed block types via `setAllowedBlockTypes()` — only custom blocks in the `<name>-blocks` category plus a configurable set of core blocks (typically image, paragraph, heading, list, embed — check the method for the project's specific allowlist). Different post types may have different allowed sets.
 - `Metaboxio\Form` — Frontend forms via Meta Box.
 
 ### Field key prefixing
@@ -304,44 +177,15 @@ The plugin enables these Meta Box AIO extensions: `meta-box-include-exclude`, `m
 
 ### How Meta Box maps to this project
 
-In this project you never use Meta Box's raw `rwmb_meta_boxes` filter directly — the definer pattern handles that. But the array structures inside `define()` are identical to what the Meta Box docs describe. Before defining any field groups, blocks, or settings pages, you must first read `resources/metabox-patterns.md` — it contains worked examples for all three patterns (field groups, settings pages, and blocks) showing exactly how to create the correct definer classes. Getting these class structures wrong is the most common mistake.
+In this project you never use Meta Box's raw `rwmb_meta_boxes` filter directly — the definer pattern handles that. But the array structures inside `define()` are identical to what the Meta Box docs describe.
+
+**Before defining any field groups or settings pages, you must read `resources/metabox-patterns.md`** — it contains worked examples for field groups, settings pages, and blocks showing exactly how to create the correct definer classes. Getting these class structures wrong is the most common mistake.
+
+**Before creating any Gutenberg blocks, you must read `resources/blocks-guide.md`** — it covers AbstractBlock, block templates, shared template partials, block SCSS patterns, Data classes, and allowed block type configuration. This is more comprehensive than the block section in metabox-patterns.md.
 
 ### Meta Box documentation
 
 For field type options, settings, and extension configuration, read `resources/metabox/index.md` for a table of contents covering the full Meta Box docs. Consult these when choosing field types, looking up field settings, or working with extensions like conditional logic, groups, or relationships.
-
-## Critical CSS System
-
-The `Asset` class (extending `AbstractInheritingThemeFile`) handles intelligent CSS discovery and output based on the current page context.
-
-### How CSS files are resolved
-
-`getCssFileSearchNames()` builds a list of CSS filenames to look for based on what WordPress is currently rendering:
-
-- Always includes `main` (non-critical) / `critical` (critical)
-- Singular posts: adds `single-{posttype}` / `critical--single-{posttype}`
-- Pages: adds `page` and the template name (e.g. `template-home`) / `critical--template-home`
-- Archives: adds `archive-{taxonomy}` / `critical--archive-{taxonomy}`
-- Search: adds `search` / `critical--search`
-
-### Output methods
-
-- `_S()->asset->outputCriticalCss()` — Inlines all matching critical CSS into `<style>` tags in `<head>`. Skipped when HMR is active.
-- `_S()->asset->outputDeferedNonCriticalCss()` — Outputs matching non-critical CSS as preloaded `<link>` tags using the print media trick for lazy loading.
-
-When creating a new page template or post type, create matching SCSS entry points (e.g. `critical--template-about.scss`, `single-event.scss`) and they will be automatically discovered and loaded on the relevant pages.
-
-## Template Inheritance
-
-`AbstractInheritingThemeFile` provides a file location system with a priority chain: child theme → parent theme → plugin. Both `Asset` and `Template` extend this.
-
-The search path priority is:
-
-1. Child theme directory + subpath (priority 1)
-2. Parent theme directory + subpath (priority 10)
-3. Plugin directory + subpath (priority 100)
-
-Each subclass defines its search subpath via `getSearchSubPath()` — `Asset` uses `'assets'`, `Template` uses `'template'`. This means the plugin can ship fallback templates or assets that the theme can override simply by placing a file at the same relative path.
 
 ## Environment & Configuration
 
@@ -360,19 +204,33 @@ Key env vars:
 
 This project's structure differs from typical WordPress — most logic lives in the site plugin, not the theme. Use this as a guide:
 
-| Task                   | Where                                   | How                                                                                           |
-| ---------------------- | --------------------------------------- | --------------------------------------------------------------------------------------------- |
-| New post type          | `inc/PostType/` in site plugin          | Create class implementing `PostTypeDefinerInterface`, add to `PostType::_getDefiners()`       |
-| New taxonomy           | `inc/Taxonomy/` in site plugin          | Create class implementing `TaxonomyDefinerInterface`, add to `Taxonomy::_getDefiners()`       |
-| New custom fields      | `inc/Metaboxio/Metabox/` in site plugin | Create class implementing `MetaboxDefinerInterface`, add to `Metabox::_getDefiners()`         |
-| New Gutenberg block    | `inc/Metaboxio/Block/` in site plugin   | Create class implementing `BlockDefinerInterface`, add to `Block::_getDefiners()`             |
-| New REST API endpoint  | `inc/Api/` in site plugin               | Create class implementing `ApiDefinerInterface`, add to `Api::getDefiners()`                  |
-| New page template      | Theme root (e.g. `template-about.php`)  | Create template file + matching critical CSS entry point                                      |
-| New JS behaviour       | `assets/src/js/` in theme               | Create Groundwork component, import and register in `main.ts`                                 |
-| New styles             | `assets/src/sass/` in theme             | Add partial with `--critical` or `--non-critical` suffix, `@use` from appropriate entry point |
-| Project-specific logic | `inc/` in site plugin                   | New class extending `Abstract<Name>`, add as property on orchestrator                         |
-| Admin customisation    | `inc/Admin.php` in site plugin          | Extend existing `Admin` class                                                                 |
-| Nav menus              | `inc/Menu.php` in site plugin           | Add to `register_nav_menus()` call                                                            |
-| Theme supports         | `inc/ThemeSupports.php` in site plugin  | Add to `add_theme_support()` calls                                                            |
+| Task                   | Where                                   | How                                                                                                  |
+| ---------------------- | --------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| New post type          | `inc/PostType/` in site plugin          | Extend `AbstractPostType`, set `$postTypeCode`, add to `PostType::_getDefiners()`                    |
+| New taxonomy           | `inc/Taxonomy/` in site plugin          | Extend `AbstractTaxonomy`, set `$taxonomyCode` + `$postTypeCode`, add to `Taxonomy::_getDefiners()`  |
+| New custom fields      | `inc/Metaboxio/Metabox/` in site plugin | Extend `AbstractMetabox`, implement `MetaboxDefinerInterface`, add to `Metabox::_getDefiners()`      |
+| New Gutenberg block    | `inc/Metaboxio/Block/` in site plugin   | Extend `AbstractBlock`, override `define()`, add to `Block::_getDefiners()`                          |
+| New REST API endpoint  | `inc/Api/` in site plugin               | Implement `ApiDefinerInterface`, add to `Api::getDefiners()`                                         |
+| New page template      | Theme root (e.g. `template-about.php`)  | Create template file + matching critical CSS entry point                                             |
+| New JS behaviour       | `assets/src/js/` in theme               | Create Groundwork component, import and register in `main.ts`                                        |
+| New styles             | `assets/src/sass/` in theme             | Add partial with `--critical` or `--non-critical` suffix, `@use` from appropriate entry point        |
+| Project-specific logic | `inc/` in site plugin                   | New class extending `Abstract<Name>`, add as property on orchestrator                                |
+| Admin customisation    | `inc/Admin.php` in site plugin          | Extend existing `Admin` class                                                                        |
+| Nav menus              | `inc/Menu.php` in site plugin           | Add to `register_nav_menus()` call                                                                   |
+| Theme supports         | `inc/ThemeSupports.php` in site plugin  | Add to `add_theme_support()` calls                                                                   |
 
 The key principle: if it's PHP logic or WordPress registration, it belongs in the site plugin. The theme contains only templates, assets (JS/SCSS/images), and `style.css` for the theme header.
+
+## Resource Reference
+
+When working on specific domains, read the relevant resource before making changes:
+
+| Working on...                          | Read this first                    |
+| -------------------------------------- | ---------------------------------- |
+| Post types, taxonomies, API endpoints  | `resources/definer-pattern.md`     |
+| Custom fields, settings pages          | `resources/metabox-patterns.md`    |
+| Gutenberg blocks                       | `resources/blocks-guide.md`        |
+| JS components, interactivity           | `resources/groundwork-guide.md`    |
+| SCSS partials, new entry points        | `resources/sass-structure.md`      |
+| CSS loading, critical CSS, inheritance | `resources/critical-css.md`        |
+| Meta Box field types and options       | `resources/metabox/index.md`       |

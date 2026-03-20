@@ -178,8 +178,8 @@ class HeroSlider extends AbstractBlock
             'icon' => 'slides',
             'title' => 'Hero Slider',
             'category' => '<name>-blocks',
-            'render_callback' => function () {
-                $this->render();
+            'render_callback' => function ($attributes) {
+                $this->render($attributes);
             },
             'enqueue_assets' => $this->enqueueAdminBlockAssets(),
             'fields' => [
