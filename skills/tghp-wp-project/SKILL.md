@@ -92,6 +92,29 @@ Location: src/themes/<name>/
 
 The theme and the site plugin are tightly coupled in the project, as such you'll find functions.php is empty. Anything that might traditionally be in here belongs in the site plugin instead.
 
+### Template parts
+
+Reusable sub-parts of templates live in a `template-parts/` directory in the theme root, organised into domain subdirectories. For example:
+
+```
+template-parts/
+├── post/
+│   ├── loop-post.php
+│   └── social-icons.php
+├── people/
+│   └── profile-card.php
+└── arrow-button.php
+```
+
+Load these with `get_template_part()`:
+
+```php
+get_template_part('template-parts/post/social-icons');
+get_template_part('template-parts/people/profile-card', null, ['postType' => 'team']);
+```
+
+When a piece of markup is used in more than one template, extract it into a template part rather than duplicating it. Group by domain (e.g. `post/`, `people/`, `account/`) rather than putting everything flat in `template-parts/`.
+
 ### Scripts and Styles
 
 #### Vitepress
@@ -124,9 +147,11 @@ Scripts are enqueued as ES modules via `wp_enqueue_script_module()` (WordPress 6
 
 #### Groundwork
 
-`@tghp/groundwork.js` is TGHP's lightweight frontend framework for organising JS that runs on every page and binding component behaviour to DOM elements. It uses a namespace-based system where components are bound to DOM elements via `data-gw-{namespace}-init` attributes.
+`@tghp/groundwork.js` is the project's JS framework. All frontend JS in this project goes through Groundwork — do not use raw `document.querySelector()`, direct DOM manipulation, or side-effect imports in `main.ts`. Every piece of JS behaviour is either a Groundwork **component** (bound to a DOM element via `data-gw-{namespace}-init`) or a Groundwork **include** (runs on every page).
 
-**Before writing or modifying any JS component, you must read `resources/groundwork-guide.md`.** It covers the component/include pattern, typed component args, passing data from PHP to JS, using multiple namespaces, and mounting React components via Groundwork. Writing JS in this project without understanding Groundwork will produce code that doesn't integrate with the existing architecture.
+The `data-gw-{namespace}-init` attribute is also the standard way to pass data from PHP to JS. Encode server-side values as JSON in this attribute — do not use `wp_localize_script()`, custom data attributes, or inline `<script>` tags.
+
+**Before writing or modifying any JS, you must read `resources/groundwork-guide.md`.** It covers the component/include pattern, typed component args, the PHP→JS data boundary, multiple namespaces, and mounting React components via Groundwork. Code that bypasses Groundwork will not integrate with the project architecture and will need to be rewritten.
 
 #### Styles
 
@@ -222,6 +247,32 @@ This project's structure differs from typical WordPress — most logic lives in 
 | Theme supports         | `inc/ThemeSupports.php` in site plugin  | Add to `add_theme_support()` calls                                                                   |
 
 The key principle: if it's PHP logic or WordPress registration, it belongs in the site plugin. The theme contains only templates, assets (JS/SCSS/images), and `style.css` for the theme header.
+
+### Theme template naming
+
+WordPress template files in the theme root follow these conventions:
+
+- **Page templates**: `template-{name}.php` (e.g. `template-contact.php`) — selected in the page editor
+- **Post type singles**: `single-{posttype}.php` (e.g. `single-event.php`) — auto-used for single post views
+- **Taxonomy archives**: `taxonomy-{taxonomy_code}.php` (e.g. `taxonomy-content_area.php`) — auto-used for taxonomy term archive pages
+- **Generic**: `index.php`, `page.php`, `single.php`, `404.php`
+
+### Common multi-domain workflows
+
+Features rarely touch just one domain. These are the typical combinations:
+
+**New page template** → also create:
+- Critical CSS entry point (`critical--template-{name}.scss`) that `@use`s from a `pages/` partial
+- Metabox field group targeting the template via `include` → `template` (if the page has CMS-managed content)
+- Consider disabling Gutenberg for the template via `Admin::controlEditor()` if using Meta Box fields
+
+**New post type** → also create:
+- Single template (`single-{posttype}.php`) in theme
+- Critical CSS entry point (`critical--single-{posttype}.scss`)
+- Metabox field group for any custom fields on the post type
+
+**New taxonomy** → also create:
+- Taxonomy archive template (`taxonomy-{taxonomy_code}.php`) in theme if a listing page is needed
 
 ## Resource Reference
 

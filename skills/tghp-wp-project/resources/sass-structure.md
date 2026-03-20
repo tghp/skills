@@ -35,3 +35,25 @@ sass/
 - `abstracts/_setup.scss` is `@use`d by any partial that needs access to variables or mixins
 - Breakpoints are defined in `_variables.scss` and shared with `sass-mq` for responsive media queries via the `mq()` mixin wrapper
 - When creating a new page template or post type, create matching SCSS entry points (e.g. `critical--template-about.scss`, `single-event.scss`) — the Asset class will auto-discover and load them on the relevant pages
+
+## Class naming: BEM
+
+CSS class names follow **BEM** (Block Element Modifier) convention:
+
+- **Block**: the top-level component (`.card`, `.hero`, `.site-header`)
+- **Element**: a child within the block, joined with `__` (`.card__title`, `.hero__description`)
+- **Modifier**: a variation, joined with `--` (`.card--featured`, `.button--primary`)
+
+For Gutenberg blocks, the block code from `AbstractBlock::getCode()` is the BEM block name:
+
+```scss
+.call-to-action {
+  // Block
+  &__heading { /* Element */ }
+  &__description { /* Element */ }
+  &__button { /* Element */ }
+  &--dark { /* Modifier */ }
+}
+```
+
+Note: the `__` in BEM class names (`.card__title`) is unrelated to the `__` used in SASS variable/mixin naming (`$font__body-family`, `@include font__heading`). The variable naming is a project convention for grouping related values — it is not BEM.
