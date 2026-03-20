@@ -8,35 +8,46 @@ Curated collection of skills for TGHP workflows.
 pnpx skills add tghp/skills --skill='*'
 ```
 
-Or for individual skills
+Or for individual skills:
 
 ```
 pnpx skills add tghp/skills --skill tghp-wp-project
 pnpx skills add tghp/skills --skill maintenance-js
+pnpx skills add tghp/skills --skill maintenance-wp
 ```
-
-### Extra Steps
-
-The following skills use bun scripts for automation of package/project versions and require navigating to the skill directory to run `bun install`:
-
-- [maintenance-js](./skills/maintenance-js/)
-
-The following skills use the GitHub API and require an access token added as an export (i.e. in `~/.zshrc` or equivalent) setting `GITHUB_PERSONAL_ACCESS_TOKEN`
-
-- [maintenance-js](./skills/maintenance-js/)
 
 ## Skills
 
 | Skill | Description |
 | ----- | ----------- |
 | [tghp-wp-project](./skills/tghp-wp-project/) | Guidance for agents when working with TGHP WP codebases |
-| [maintenance-js](./skills/maintenance-js/) | Automated maintenance checks against known packages and projects. Also see [Maintenance Skills](#maintenance-skills) below for how to point the skill to repos to watch |
+| [maintenance-js](./skills/maintenance-js/) | Security update checks for JS packages (Payload CMS, Next.js, Astro) |
+| [maintenance-wp](./skills/maintenance-wp/) | Security update checks for WordPress core |
 
-## Maintenance Skills
+## Setup
 
-### `maintenance-js`
+### Prerequisites
 
-This skill reads watched repos from `~/.tghp/maintenance-js/config.json`. Create this file with the following structure:
+The maintenance skills use bun scripts and require navigating to each skill directory to install dependencies:
+
+```
+cd skills/maintenance-js && bun install
+cd skills/maintenance-wp && bun install
+```
+
+Both maintenance skills use the GitHub API for checking repo versions. Add an access token as an export (e.g. in `~/.zshrc`):
+
+```
+export GITHUB_PERSONAL_ACCESS_TOKEN=your_token
+```
+
+### Watched Repos
+
+Both maintenance skills compare upstream releases against the versions installed in your repos. Each reads its config from `~/.tghp/`.
+
+#### `maintenance-js`
+
+Config: `~/.tghp/maintenance-js/config.json`
 
 ```json
 {
@@ -50,16 +61,27 @@ This skill reads watched repos from `~/.tghp/maintenance-js/config.json`. Create
 }
 ```
 
-Each key is the upstream `owner/repo` known package (see below), `npmPackage` is the npm package name to look up in lockfiles, and `repos` lists the dependent repos to check. Use `lockfileDir` for monorepos where the lockfile isn't at the root.
+Each key is the upstream `owner/repo` (see known packages below), `npmPackage` is the npm package name to look up in lockfiles, and `repos` lists the dependent repos to check. Use `lockfileDir` for monorepos where the lockfile isn't at the root.
 
-#### Known Packages
+Known packages:
 
-- Payload CMS
-  - Upstream: `payloadcms/payload`
-  - NPM Package: `payload`
-- Next.js
-  - Upstream: `vercel/next.js`
-  - NPM Package: `next`
-- Astro
-  - Upstream: `withastro/astro`
-  - NPM Package: `astro`
+| Package | Owner/Repo | NPM Package |
+| ------- | ---------- | ----------- |
+| Payload CMS | `payloadcms/payload` | `payload` |
+| Next.js | `vercel/next.js` | `next` |
+| Astro | `withastro/astro` | `astro` |
+
+#### `maintenance-wp`
+
+Config: `~/.tghp/maintenance-wp/config.json`
+
+```json
+{
+  "repos": [
+    { "repo": "org/repo" },
+    { "repo": "org/monorepo", "composerDir": "wordpress" }
+  ]
+}
+```
+
+`repos` lists the repos to check. The skill looks for `johnpbloch/wordpress` in each repo's `composer.lock`. Use `composerDir` for monorepos where `composer.lock` isn't at the root.
