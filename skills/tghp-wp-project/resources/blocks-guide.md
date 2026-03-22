@@ -78,10 +78,20 @@ protected function _getDefiners()
 Create `templates/blocks/hero-slider/template.php` in the plugin:
 
 ```php
-<?php /** @var $block TGHP\<Name>\Metaboxio\Block\HeroSlider */ ?>
-<div class="block hero-slider">
-    <h1><?= $block->getHeading() ?></h1>
-</div>
+<?php
+/**
+ * @var $block TGHP\<Name>\Metaboxio\Block\HeroSlider
+ */
+
+$blockClassName = $block->getCode();
+?>
+<?php if($blockClassName): ?>
+    <div class="block <?= $blockClassName ?>">
+        <div class="<?= $blockClassName ?>__title">
+            <?= $block->getTitle() ?>
+        </div>
+    </div>
+<?php endif ?>
 ```
 
 The template receives `$block` — the class instance — and should call its getter methods rather than accessing fields directly.
