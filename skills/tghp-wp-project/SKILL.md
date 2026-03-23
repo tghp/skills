@@ -66,13 +66,13 @@ The entrypoint for the plugin instantiates the orchestrator class, thereby trigg
 <name>-site.php → \TGHP\<Name>\<Name>::instance() → instantiates subsystems → subsystem behaviour
 ```
 
-The orchestrator is available for access outside of the plugin via global helper functions defined in the plugin entrypoint. These vary by project age — **always check the plugin entrypoint to see which globals exist and which are used in templates**. Prefer them in this order:
+The orchestrator is available for access outside of the plugin via global helper functions defined in the plugin entrypoint. These vary by project age — **check the plugin entrypoint before writing any code that calls these functions**. Using an alias that doesn't exist in the project is a fatal PHP error. The possible globals are:
 
-1. `_S()` / `_MB()` — short aliases, present in newer codebases
-2. `TGHPSite()` / `TGHPSiteMetabox()` — medium-length aliases, present in most codebases
-3. `TGHP<Name>()` — project-specific function (e.g. `TGHPColossus()`), always present
+- `_S()` / `_MB()` — short aliases, **only present in newer codebases** (many projects lack these entirely)
+- `TGHPSite()` / `TGHPSiteMetabox()` — present in most codebases
+- `TGHP<Name>()` — project-specific function (e.g. `TGHPColossus()`), always present
 
-Use whichever form the existing codebase uses. If `_S()` exists and is used in templates, use it. If not, fall back to `TGHPSite()`, then the project-specific function.
+Match whichever form the existing templates already use. If the project's templates use `TGHPSite()`, use `TGHPSite()` — do not switch to `_S()` even if it exists in the entrypoint. Consistency with the existing codebase is the priority.
 
 ### Core Subclasses
 
