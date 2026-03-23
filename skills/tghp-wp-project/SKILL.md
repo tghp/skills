@@ -31,6 +31,20 @@ The `src/` directory is the boundary: everything in it is "ours", everything out
 - PHP logic belongs in the site plugin (`src/plugins/<name>-site/`), not in the theme's `functions.php`
 - The theme (`src/themes/<name>/`) contains only templates, assets, and a `style.css` header
 
+### Before writing code — check project conventions
+
+These projects share a common template but conventions vary by project age. Before writing new code, verify these project-specific details:
+
+- **Global functions**: Check the plugin entrypoint (`<name>-site.php`) to see which helpers exist (`_S()`, `TGHPSite()`, `TGHP<Name>()`) and use whichever the project already uses (see "Architecture" below)
+- **React vs Preact**: Check `vite.config.mts` for `preact: true` or `react: true` — imports differ (see `resources/groundwork-guide.md`)
+- **Metabox namespace**: Check whether the project uses `inc/Metaboxio/` or `inc/Metabox/` — don't assume
+- **Groundwork namespace**: Check the JS entry point for the actual namespace string (not always `'main'`) — this determines `data-gw-{namespace}-init` attributes in PHP
+- **JS or TS**: Check whether entry points are `.js` or `.ts` — don't introduce TypeScript into a JavaScript-only entry point
+
+### Template code ethos
+
+Templates will primarily call into the orchestrator's subsystems to access metabox content and project-specific logic. The rule of thumb: if a piece of logic is more than a few statements, it belongs in a subsystem method rather than inline in the template (e.g. `_S()->article->getArticleReadTime()` rather than computing it in the template). Before writing new logic in a template, check whether a subsystem method already exists for it.
+
 ## The Site Plugin
 
 Location: src/plugins/<name>-site/
@@ -71,9 +85,9 @@ These classes should always be present, and within the namespace defined earlier
 - Asset - Utilities surrounding asset output
 - Enqueues - Style/script enqueues
 - Menu - WP Nav menus
-- Metabox\Metabox - Definer for metabox definer classes
-- Metabox\Block - Definer for metabox form classes
-- Metabox\Form - Definer for mb-frontend-submission forms
+- Metaboxio\Metabox - Definer for metabox field group classes
+- Metaboxio\Block - Definer for Gutenberg block classes
+- Metaboxio\Form - Definer for mb-frontend-submission forms
 - Page - Utilities for getting a WP page post by its template, for which there is usually a 1-to-1 relationship. Standardised into methods e.g. `getHomePage()`
 - PostType - Definer for any post types added
 - Taxonomy - Definer for any taxonomies added
@@ -263,7 +277,7 @@ Key env vars:
 
 ## Where to Put New Code
 
-This project's structure differs from typical WordPress — most logic lives in the site plugin, not the theme. Use this as a guide:
+This project's structure differs from typical WordPress — most logic lives in the site plugin, not the theme. Use this as a guide (note: the `Metaboxio` paths shown here are the modern convention — older projects may use `Metabox` or `Blocks` instead; always check the existing directory structure):
 
 | Task                   | Where                                   | How                                                                                                  |
 | ---------------------- | --------------------------------------- | ---------------------------------------------------------------------------------------------------- |
