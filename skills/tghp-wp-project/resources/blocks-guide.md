@@ -100,15 +100,23 @@ The template receives `$block` — the class instance — and should call its ge
 
 ### 4. Block styles
 
-Block SCSS lives in `assets/src/sass/components/blocks/` in the theme, named with a `--critical` suffix:
+Block styles require two things: a partial for the frontend, and a dedicated entry point for the admin block preview.
+
+**Frontend styles**: Block SCSS partials live in `assets/src/sass/components/blocks/` in the theme, named with a `--critical` suffix:
 
 ```
 assets/src/sass/components/blocks/_hero-slider--critical.scss
 ```
 
-Import it from the `_blocks--critical.scss` manifest in the same directory. The Asset class will auto-discover the compiled CSS.
+Check how the project imports block styles — some projects use a `_blocks--critical.scss` manifest file in `components/` that `@use`s all block partials, while others import them directly in the main `critical.scss`. Follow whichever pattern exists. If neither exists yet, create a `_blocks--critical.scss` manifest in `components/` and `@use` it from the main `critical.scss`.
 
-For admin block preview styles, create `assets/dist/block--hero-slider.css` — `enqueueAdminBlockAssets()` looks for this file automatically.
+**Admin preview styles**: The block also needs a dedicated SCSS entry point at the root of the `sass/` directory so that a standalone CSS file is generated for the admin preview:
+
+```
+assets/src/sass/block--hero-slider.scss
+```
+
+Any SCSS file at the root of `sass/` is treated as an entry point by Vitepress and generates a corresponding CSS file in `assets/dist/`. The `enqueueAdminBlockAssets()` method on `AbstractBlock` looks for `assets/dist/block--{code}.css` automatically — so the naming must match the block code.
 
 ## Shared block template partials
 

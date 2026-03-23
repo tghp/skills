@@ -77,116 +77,58 @@ While there is no end-to-end typesafety between PHP and TS, defining the types i
 
 If a component function returns a value (e.g. an API object), Groundwork stores it as an instance accessible via `getInstance`. This allows other code to interact with initialised components.
 
-## Multiple namespaces
+## Namespaces and entry points
 
-A project may have multiple Groundwork instances with different namespaces for separate JS bundles. For example, a `'main'` namespace for core functionality and a `'graphic'` namespace for a Three.js-based bundle. Each namespace uses its own data attribute prefix (`data-gw-main-init` vs `data-gw-graphic-init`).
+The Groundwork namespace is not always `'main'` — some projects use a project-specific name (e.g. `'ifp'`) or split functionality across multiple namespaces (e.g. `'main'` for general components, `'article'` for article-specific JS). **Always check the existing entry point(s) in `assets/src/js/`** to find the actual namespace(s) in use.
+
+The "primary" namespace — the one with the most components and includes, or named similarly to the project — is where general-purpose components and includes should go.
+
+### When to create a new namespace
+
+For specific areas of the site (e.g. "account", "search") that have their own distinct set of components, prefer creating a new entry point and namespace. However, if the project has only one namespace with no splitting, ask the user whether to add to the existing one or start a new one.
 
 Adding a new Groundwork namespace requires:
 1. A new JS entry point in `assets/src/js/` creating the Groundwork instance
 2. A corresponding enqueue in the `Enqueues` class — follow the existing pattern in `Enqueues::enqueueScripts()`
 
-## React components via Groundwork
+### Directory structure per namespace
 
-For interactive UIs that need React, mount the React application as a Groundwork component. This keeps initialisation consistent — the same `data-gw-*-init` attribute pattern handles data passing from PHP to React, and the component lifecycle is managed by Groundwork.
-
-### File structure
-
-A React feature has two files: a Groundwork wrapper (`.ts`) and the React component tree (`.tsx`):
+Namespace-specific code should be organised into a folder inside `js/` that matches the namespace name, with its own `components/` and/or `includes/` sub-folders (only create folders that are needed):
 
 ```
-assets/src/js/main/components/
-  term-list/            ← React component tree
-    TermList.tsx
-  term-list.ts          ← Groundwork wrapper that mounts TermList
+assets/src/js/
+├── main.ts                    <- entry point for 'main' namespace
+├── main/
+│   ├── components/
+│   │   └── video.ts
+│   └── includes/
+│       └── globals.ts
+├── account.ts                 <- entry point for 'account' namespace
+└── account/
+    └── components/
+        └── subscriptions.ts
 ```
 
-### The Groundwork wrapper
+## React/Preact components via Groundwork
 
-The wrapper is a standard Groundwork `ComponentFunction` that creates a React root and renders into the element:
+For interactive UIs that need a component framework, mount React or Preact as a Groundwork component. This keeps initialisation consistent — the same `data-gw-*-init` attribute pattern handles data passing from PHP, and the component lifecycle is managed by Groundwork.
 
-```typescript
-// term-list.ts
-import { ComponentFunction } from '@tghp/groundwork.js';
-import { createRoot } from 'react-dom/client';
-import TermList from './term-list/TermList';
+### Which framework is this project using?
 
-type TermListArgs = {
-  taxonomySlug: string;
-  apiBase: string;
-};
+Check `vite.config.mts` for the vitepress configuration:
+- `preact: true` → the project uses **Preact**. Read `resources/preact-groundwork.md`.
+- `react: true` (without `preact: true`) → the project uses **React**. Read `resources/react-groundwork.md`.
+- Neither configured → no component framework is set up yet. If the user needs one, prefer React unless they specify Preact. Set `react: true` in the vitepress config and follow `resources/react-groundwork.md`.
 
-const termListComponent: ComponentFunction<HTMLDivElement, TermListArgs> = (
-  elem,
-  args
-) => {
-  const root = createRoot(elem);
-  root.render(<TermList {...args} />);
-};
+If a component framework is already in use in the project, continue using it — do not switch.
 
-export default termListComponent;
-```
+### Common pattern (both frameworks)
 
-### The React component
+Regardless of framework, the structure is the same:
 
-A standard React component — receives props from the Groundwork wrapper:
+1. **Groundwork wrapper** (`.ts`) — a `ComponentFunction` that mounts the framework component
+2. **Component tree** (`.tsx`) — the actual UI, in a subdirectory named after the component
+3. **Registration** — import the wrapper and register it with `groundworkMain.components.add()`
+4. **PHP integration** — pass data via `data-gw-{namespace}-init` JSON attribute, same as vanilla components
 
-```tsx
-// term-list/TermList.tsx
-import { useState, useEffect } from 'react';
-
-type Term = {
-  id: number;
-  name: string;
-  slug: string;
-};
-
-type TermListProps = {
-  taxonomySlug: string;
-  apiBase: string;
-};
-
-const TermList = ({ taxonomySlug, apiBase }: TermListProps) => {
-  const [terms, setTerms] = useState<Term[]>([]);
-
-  useEffect(() => {
-    fetch(`${apiBase}/taxonomy-terms/${taxonomySlug}`)
-      .then((res) => res.json())
-      .then((data) => setTerms(data.terms));
-  }, [taxonomySlug, apiBase]);
-
-  return (
-    <ul>
-      {terms.map((term) => (
-        <li key={term.id}>{term.name}</li>
-      ))}
-    </ul>
-  );
-};
-
-export default TermList;
-```
-
-### Registration and PHP integration
-
-Register the wrapper in `main.ts` like any other Groundwork component:
-
-```typescript
-import termListComponent from './main/components/term-list';
-groundworkMain.components.add('term-list', termListComponent);
-```
-
-In PHP, pass data via `data-gw-main-init` as usual:
-
-```php
-<?php
-$args = [
-  'term-list' => [
-    'taxonomySlug' => 'content_area',
-    'apiBase' => rest_url('referenceproject/v1'),
-  ],
-];
-?>
-<div data-gw-main-init='<?= esc_attr(json_encode($args)) ?>'></div>
-```
-
-The React component receives `taxonomySlug` and `apiBase` as props — the PHP→JS boundary is the same `data-gw-*-init` pattern used for vanilla components.
+The only differences between React and Preact are the import sources and mount call. See the relevant guide for exact syntax.

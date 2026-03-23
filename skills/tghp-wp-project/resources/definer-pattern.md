@@ -25,6 +25,8 @@ All definers implement `DefinerInterface` which requires a single `define(): arr
 
 Always extend the abstract base class rather than implementing the raw interface — the base class handles registration boilerplate and provides sensible defaults. You only need to set the required properties and override `define()`.
 
+Post types and taxonomies use a `const` + property pattern: the constant (e.g. `POST_TYPE_CODE`) provides a static reference for use outside the class (e.g. `Event::POST_TYPE_CODE`), while the property satisfies the abstract base class. Always define both.
+
 `Api` uses a similar definer-like pattern with `ApiDefinerInterface` (`getRoute()`, `getType()`, `handle($data)`) but manages its own definer array rather than extending `AbstractDefines`. Add API definers to `Api::getDefiners()`, not `_getDefiners()`.
 
 ## Adding a new definer
@@ -42,7 +44,8 @@ namespace TGHP\<Name>\PostType;
 
 class Event extends AbstractPostType
 {
-    protected string $postTypeCode = 'event';
+    const POST_TYPE_CODE = 'event';
+    protected $postTypeCode = self::POST_TYPE_CODE;
 
     public function define(): array
     {
@@ -77,8 +80,9 @@ namespace TGHP\<Name>\Taxonomy;
 
 class EventCategory extends AbstractTaxonomy
 {
-    protected string $taxonomyCode = 'event_category';
-    protected string $postTypeCode = 'event';
+    const TAXONOMY_CODE = 'event_category';
+    protected $taxonomyCode = self::TAXONOMY_CODE;
+    protected $postTypeCode = Event::POST_TYPE_CODE;
 
     public function define(): array
     {
@@ -124,3 +128,7 @@ class SearchEndpoint implements ApiDefinerInterface
 Then in `Api.php`, add it to `getDefiners()` (note: `getDefiners()`, not `_getDefiners()`).
 
 The same extend-and-override pattern applies to metabox field groups and blocks — for those, read `resources/metabox-patterns.md` and `resources/blocks-guide.md` respectively.
+
+## Project-specific definer patterns
+
+Some projects extend the definer pattern beyond the core set — for example, a project might have its own `CronDefinerInterface` for scheduled tasks or other domain-specific definer managers. If the project has a custom definer pattern for the type of entity you're registering, use it. If you're building something that feels like it fits the definer pattern (declarative registration of a repeating entity type) but no pattern exists for it yet, offer the definer approach as an option to the user.

@@ -27,7 +27,7 @@ The `src/` directory is the boundary: everything in it is "ours", everything out
 
 - Only edit files inside `src/` — never manually modify `wp-content/plugins/`, `wp-content/themes/`, or `wp/`
 - To add or update a third-party plugin, change `composer.json` — do not download or copy plugins manually
-- To patch a third-party plugin, use `cweagans/composer-patches` — do not edit the plugin's files directly
+- To patch a third-party plugin, use `cweagans/composer-patches` (see `resources/composer-patches.md`) — do not edit the plugin's files directly
 - PHP logic belongs in the site plugin (`src/plugins/<name>-site/`), not in the theme's `functions.php`
 - The theme (`src/themes/<name>/`) contains only templates, assets, and a `style.css` header
 
@@ -52,7 +52,13 @@ The entrypoint for the plugin instantiates the orchestrator class, thereby trigg
 <name>-site.php → \TGHP\<Name>\<Name>::instance() → instantiates subsystems → subsystem behaviour
 ```
 
-The orchestrator is available for access outside of the plugin via the `_S()` global in newer codebases and `TGHPSite()` in older codebases.
+The orchestrator is available for access outside of the plugin via global helper functions defined in the plugin entrypoint. These vary by project age — **always check the plugin entrypoint to see which globals exist and which are used in templates**. Prefer them in this order:
+
+1. `_S()` / `_MB()` — short aliases, present in newer codebases
+2. `TGHPSite()` / `TGHPSiteMetabox()` — medium-length aliases, present in most codebases
+3. `TGHP<Name>()` — project-specific function (e.g. `TGHPColossus()`), always present
+
+Use whichever form the existing codebase uses. If `_S()` exists and is used in templates, use it. If not, fall back to `TGHPSite()`, then the project-specific function.
 
 ### Core Subclasses
 
@@ -76,9 +82,25 @@ These classes should always be present, and within the namespace defined earlier
 - Dev - Vite HMR integration; manages dev server script injection and hot-reloading of CSS/JS
 - Util - Misc utils
 
-### Other classes
+### Adding project-specific classes
 
-Most projects will contain other classes for project specific functionality. You'll find these alongside the core classes.
+Most projects extend well beyond the core set with domain-specific classes (e.g. `Article`, `Podcast`, `Subscriptions`, `Search`). Adding new subsystems is extremely common and encouraged for organising functionality into logical domains.
+
+Before creating a new class, check whether an existing class already covers the domain — if so, add the functionality there. If the boundary is unclear, ask the user.
+
+To add a new subsystem:
+
+1. Create the class in `inc/`, extending `Abstract<Name>`
+2. Add a public property declaration on the orchestrator class
+3. Instantiate it in the orchestrator's `__construct()` — most projects have comments labelling the project-specific section; append there. If no comments exist, append after the existing instantiations
+4. The class is now accessible via `_S()-><propertyName>` (or whichever global the project uses)
+
+```php
+// In the orchestrator's __construct():
+$this->podcast = new Podcast($this);
+```
+
+The new class inherits `$this-><name>` (the orchestrator reference) from `Abstract<Name>`, giving it access to all other subsystems.
 
 ## The Definer Pattern
 
@@ -90,7 +112,7 @@ The definer pattern is how post types, taxonomies, metabox field groups, blocks,
 
 Location: src/themes/<name>/
 
-The theme and the site plugin are tightly coupled in the project, as such you'll find functions.php is empty. Anything that might traditionally be in here belongs in the site plugin instead.
+The theme and the site plugin are tightly coupled. In newer projects, `functions.php` will be empty (or contain only a comment referencing the site plugin). Older projects may have some code in `functions.php`, but regardless — **do not add new code to `functions.php`**. Anything that would traditionally go there belongs in the site plugin instead.
 
 ### Template parts
 
@@ -124,8 +146,7 @@ When a piece of markup is used in more than one template, extract it into a temp
 - Auto-discovers entry points in `src/themes/<name>/assets/src/` — JS in `js/` and SCSS in `sass/`
 - Compiles to `src/themes/<name>/assets/dist/`
 - Provides HMR dev server integration with WordPress (via `VITE_HMR` and `VITE_PORT` env vars)
-- Supports React (and associated JSX support) out of the box (`react: true`)
-- Aditionally supports Preact if desired (`preact: true`, `react` must also be `true`)
+- Supports React (`react: true`) and Preact (`preact: true`) — check `vite.config.mts` to see which is configured. If neither, prefer React for new projects unless the user specifies Preact
 - Extends via an `alterConfig` callback for project-specific Vite config
 
 The `vite.config.mts` at the project root imports vitepress and passes it project-level config. The template includes support for exclusive build modes (`--scripts` / `--styles` flags) for faster iteration when only one asset type needs rebuilding.
@@ -141,9 +162,23 @@ Builds are typically very fast so it is viable to use `npm run build` as a metho
 
 #### Scripts
 
-We use TypeScript here, however you may find there is no TypeScript used at all. This typically indicates an older project and in this case TypeScript should not be used. However, if any TypeScript is present, prefer writing TypeScript for new scripts.
+We use TypeScript here, however you may find there is no TypeScript used at all. This typically indicates an older project. The rule: if the entry point file is `.js` (not `.ts`), new files under that entry point should also be `.js` — do not introduce TypeScript into a JavaScript-only entry point. If any TypeScript is present in the project (`.ts` entry points exist), prefer TypeScript for new files.
 
-Scripts are enqueued as ES modules via `wp_enqueue_script_module()` (WordPress 6.5+). The `Enqueues` class handles this, routing through `Dev::enqueueScript()` when HMR is active.
+Scripts are enqueued as ES modules. The `Enqueues` class wraps this — to enqueue a new script entry point, add a `_enqueueScript` call to `enqueueScripts()`:
+
+```php
+public function enqueueScripts()
+{
+    $this->_enqueueScript(
+        'main',
+        get_stylesheet_directory_uri() . '/assets/src/js/main.ts',
+        get_stylesheet_directory_uri() . '/assets/dist/main.js',
+        get_stylesheet_directory() . '/assets/dist/main.js'
+    );
+}
+```
+
+The three paths are: handle name, HMR dev source path, production dist URI, and production dist filesystem path. Follow the existing pattern in the project's `Enqueues` class for any new entry points.
 
 #### Groundwork
 
@@ -161,7 +196,7 @@ We use SASS with a critical/non-critical CSS splitting architecture. **Before wr
 
 ## Meta Box Integration
 
-These projects use [Meta Box AIO](https://metabox.io/) (not ACF) for custom fields, settings pages, Gutenberg blocks, and forms. The Metaboxio namespace in the site plugin contains the integration classes.
+These projects use [Meta Box AIO](https://metabox.io/) (not ACF) for custom fields, settings pages, Gutenberg blocks, and forms. The integration classes live in the site plugin under a dedicated namespace — most commonly `Metaboxio` (e.g. `inc/Metaboxio/Metabox/`, `inc/Metaboxio/Block/`). Older projects may use a different structure such as `Metabox` (without the 'io' suffix) or `Blocks` (plural) for the block orchestrator. Always check the existing directory structure before creating new definer classes.
 
 ### Key classes
 
@@ -179,7 +214,7 @@ All field IDs are prefixed with `_tghp<name>_` (defined as a constant in the plu
 
 ### Accessing field values
 
-The `_MB()` global (alias for `TGHPSiteMetabox()`, `_MB` may not be present in older codebases) returns the `Metabox` instance:
+Access the `Metabox` instance via whichever global the project uses (see the priority list above — `_MB()` in newer codebases, `TGHPSiteMetabox()` in older ones, or `TGHP<Name>()->metabox` if neither alias exists):
 
 ```php
 // Single field from current post (auto-prefixes the key)
@@ -285,6 +320,9 @@ When working on specific domains, read the relevant resource before making chang
 | Gutenberg blocks                       | `resources/blocks-guide.md`        |
 | Frontend forms                         | `resources/forms-guide.md`         |
 | JS components, interactivity           | `resources/groundwork-guide.md`    |
+| React components via Groundwork        | `resources/react-groundwork.md`    |
+| Preact components via Groundwork       | `resources/preact-groundwork.md`   |
 | SCSS partials, new entry points        | `resources/sass-structure.md`      |
 | CSS loading, critical CSS, inheritance | `resources/critical-css.md`        |
+| Patching third-party plugins           | `resources/composer-patches.md`    |
 | Meta Box field types and options       | `resources/metabox/index.md`       |
