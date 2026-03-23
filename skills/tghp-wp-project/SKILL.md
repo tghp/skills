@@ -43,7 +43,7 @@ These projects share a common template but conventions vary by project age. Befo
 
 ### Template code ethos
 
-Templates will primarily call into the orchestrator's subsystems to access metabox content and project-specific logic. The rule of thumb: if a piece of logic is more than a few statements, it belongs in a subsystem method rather than inline in the template (e.g. `_S()->article->getArticleReadTime()` rather than computing it in the template). Before writing new logic in a template, check whether a subsystem method already exists for it.
+Templates will primarily call into the orchestrator's subsystems to access metabox content and project-specific logic. The rule of thumb: if a piece of logic is more than a few statements, it belongs in a subsystem method rather than inline in the template (e.g. `_S()->article->getArticleReadTime()` or `TGHPSite()->article->getArticleReadTime()` rather than computing it in the template). Before writing new logic anywhere — templates, subsystems, or API endpoints — check whether an existing subsystem already provides it. Common examples: the `Page` class for page lookups by template, `Util` for srcset generation and filter removal, and any domain class (e.g. `Post`, `Article`, `Podcast`) for content processing utilities like author lists, table of contents generation, or content formatting.
 
 ## The Site Plugin
 
@@ -88,7 +88,7 @@ These classes should always be present, and within the namespace defined earlier
 - Metaboxio\Metabox - Definer for metabox field group classes
 - Metaboxio\Block - Definer for Gutenberg block classes
 - Metaboxio\Form - Definer for mb-frontend-submission forms
-- Page - Utilities for getting a WP page post by its template, for which there is usually a 1-to-1 relationship. Standardised into methods e.g. `getHomePage()`
+- Page - Utilities for getting a WP page post by its template, for which there is usually a 1-to-1 relationship. Standardised into methods e.g. `getHomePage()`, `getContactUsPage()`. **When you need a reference to a specific page, check this class first** — do not write raw `WP_Query` or `get_pages()` calls to find pages by template
 - PostType - Definer for any post types added
 - Taxonomy - Definer for any taxonomies added
 - Template - Locates template files using the theme file inheritance chain (child theme → parent theme → plugin)
@@ -107,7 +107,7 @@ To add a new subsystem:
 1. Create the class in `inc/`, extending `Abstract<Name>`
 2. Add a public property declaration on the orchestrator class
 3. Instantiate it in the orchestrator's `__construct()` — most projects have comments labelling the project-specific section; append there. If no comments exist, append after the existing instantiations
-4. The class is now accessible via `_S()-><propertyName>` (or whichever global the project uses)
+4. The class is now accessible via the project's global accessor (e.g. `_S()-><propertyName>` or `TGHPSite()-><propertyName>` — match whichever the project uses)
 
 ```php
 // In the orchestrator's __construct():
@@ -115,6 +115,33 @@ $this->podcast = new Podcast($this);
 ```
 
 The new class inherits `$this-><name>` (the orchestrator reference) from `Abstract<Name>`, giving it access to all other subsystems.
+
+#### Nested subsystems for complex domains
+
+When a domain has multiple distinct concerns, group them under a parent subsystem that instantiates its own children rather than adding everything flat on the orchestrator. For example, a "users" domain might manage roles, profile details, subscriptions, and content gating — each as a separate class under `inc/Users/`:
+
+```php
+// inc/Users.php
+class Users extends Abstract<Name>
+{
+    public $roles;
+    public $subscriptions;
+    public $contentGating;
+
+    public function __construct(<Name> $<name>)
+    {
+        parent::__construct($<name>);
+
+        $this->roles = new Users\Roles($<name>);
+        $this->subscriptions = new Users\Subscriptions($<name>);
+        $this->contentGating = new Users\ContentGating($<name>);
+    }
+}
+```
+
+The children still extend `Abstract<Name>` and receive the orchestrator, so they can access any other subsystem. Access follows the nesting: `TGHPSite()->users->subscriptions->getActiveSubscription()`.
+
+Use this pattern when a subsystem would otherwise accumulate many unrelated methods or when you find yourself prefixing method names to disambiguate (e.g. `getUserRoles()`, `getUserSubscriptions()`, `getUserGating()` — the prefix is a sign these are separate concerns).
 
 ## The Definer Pattern
 
