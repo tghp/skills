@@ -17,6 +17,8 @@ You only need to override `define()` to declare the block's fields.
 
 ### 1. The definer class
 
+The `define()` array inside a block class uses the same field structure as Meta Box's documentation. For field type options and settings, consult `resources/metabox/index.md`. For the broader pattern of how Meta Box definers work in this project (field groups, settings pages), see `resources/metabox-patterns.md`.
+
 File: `inc/Metaboxio/Block/HeroSlider.php`
 
 ```php
@@ -117,10 +119,6 @@ When multiple blocks share common markup (e.g. a standard header with pre-title,
 
 Load these from block templates using the plugin's template system or direct `include`.
 
-## Block Data classes
-
-Some projects use `Metaboxio\Data` and `Block\Data\*` classes to centralise block field access logic. For example, `Block\Data\StandardHeader` might encapsulate the logic for reading and formatting the standard header fields used across multiple blocks. Check `inc/Metaboxio/Data.php` and `inc/Metaboxio/Block/Data/` if the project has them — they prevent duplication of field access patterns across block templates.
-
 ## Allowed block types
 
 The `Block` class's `setAllowedBlockTypes()` method restricts which blocks appear in the editor. It whitelists:
@@ -129,7 +127,3 @@ The `Block` class's `setAllowedBlockTypes()` method restricts which blocks appea
 2. A configurable set of core blocks (typically image, paragraph, heading, list, embed)
 
 Different post types may have different allowed sets — for instance, article posts might allow only a subset of blocks while pages get the full set. Check `Block.php`'s `setAllowedBlockTypes()` method for the project's specific configuration.
-
-## For field types and Meta Box options
-
-The `define()` array inside a block class uses the same field structure as Meta Box's documentation. For field type options and settings, consult `resources/metabox/index.md`. For the broader pattern of how Meta Box definers work in this project (field groups, settings pages), see `resources/metabox-patterns.md`.
