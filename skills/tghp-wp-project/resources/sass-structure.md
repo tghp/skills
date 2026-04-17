@@ -44,16 +44,70 @@ CSS class names follow **BEM** (Block Element Modifier) convention:
 - **Element**: a child within the block, joined with `__` (`.card__title`, `.hero__description`)
 - **Modifier**: a variation, joined with `--` (`.card--featured`, `.button--primary`)
 
-For Gutenberg blocks, the block code from `AbstractBlock::getCode()` is the BEM block name:
+For Gutenberg blocks, the block code from `AbstractBlock::getCode()` is the BEM block name.
+
+### Always use `&__` for elements — never write the full block name in source
+
+Once you're inside a block's rule, every element reference must go through the `&` parent selector. Do not write out the full `.<block>__<element>` class name in source — this applies **everywhere relevant**: the base block, inside modifiers, inside media queries, inside nested element rules, inside re-scoped block selectors, anywhere `&` can reach the element.
+
+**Right:**
 
 ```scss
 .call-to-action {
-  // Block
-  &__heading { /* Element */ }
-  &__description { /* Element */ }
-  &__button { /* Element */ }
-  &--dark { /* Modifier */ }
+  $self: &;
+
+  &__heading {
+    /* .call-to-action__heading */
+
+    // Media queries go *inside* the element rule, not wrapping it
+    @include mq($from: m) {
+      font-size: 2rem;
+    }
+  }
+  &__description { /* .call-to-action__description */ }
+  &__button { /* .call-to-action__button */ }
+
+  &--dark {
+    background: black;
+
+    // Re-introduce the block so &__ can reach elements inside the modifier
+    .call-to-action {
+      &__heading { 
+        color: white;
+      }
+      &__description {
+        color: grey;
+      }
+    }
+  }
+
+  // For outside-in scopes (parent themes, utility classes, etc.), reference
+  // the stored $self so it's obvious you're targeting the block's element
+  .theme--winter & {
+    #{$self}__heading {
+      color: blue;
+    }
+  }
 }
 ```
 
-Note: the `__` in BEM class names (`.card__title`) is unrelated to the `__` used in SASS variable/mixin naming (`$font__body-family`, `@include font__heading`). The variable naming is a project convention for grouping related values — it is not BEM.
+**Wrong:**
+
+```scss
+.call-to-action {
+  .call-to-action__heading { }           // repeats block name at top level
+
+  &--dark {
+    .call-to-action__heading { }         // full class name inside modifier
+    .call-to-action__description { }
+  }
+}
+```
+
+The compiled CSS is identical for both forms — this rule is about *source* consistency. Keeping every element name derived from `&` means renaming the block, or forking a variant, is a one-line change. It also makes element inventories scannable: every `&__foo` line in the file is an element declaration, with no ambiguity between block references and element references.
+
+When reviewing or editing an existing partial, if you find `.<block>__<element>` written out inside a nested context, refactor it to the nested `&__` form rather than adding more of the same pattern.
+
+### Variable `__` naming is unrelated
+
+The `__` in BEM class names (`.card__title`) is unrelated to the `__` used in SASS variable/mixin naming (`$font__body-family`, `@include font__heading`). The variable naming is a project convention for grouping related values — it is not BEM.
