@@ -204,7 +204,7 @@ When a piece of markup is used in more than one template, extract it into a temp
 `@tghp/vitepress` (not to be confused with the Vue-powered static site generator of the same name) is TGHP's Vite preset for WordPress themes. It handles compilation of both scripts and styles. It wraps Vite with conventions suited to the project structure:
 
 - Auto-discovers entry points in `src/themes/<name>/assets/src/` — JS in `js/` and SCSS in `sass/`
-- Compiles to `src/themes/<name>/assets/dist/`
+- Compiles to `src/themes/<name>/assets/dist/` — **this directory is gitignored; built assets are never committed**. Do not `git add` anything under `assets/dist/`, and do not infer tracking state from an empty `git status` (empty just means git is ignoring the path). Dist is rebuilt at deploy time
 - Provides HMR dev server integration with WordPress (via `VITE_HMR` and `VITE_PORT` env vars)
 - Supports React (`react: true`) and Preact (`preact: true`) — check `vite.config.mts` to see which is configured. If neither, prefer React for new projects unless the user specifies Preact
 - Extends via an `alterConfig` callback for project-specific Vite config
