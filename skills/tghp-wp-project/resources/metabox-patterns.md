@@ -69,6 +69,46 @@ To target fields to specific page templates, use `include`:
 ],
 ```
 
+### Gating a metabox on arbitrary runtime state (e.g. `post_status`)
+
+`include`/`exclude` has no built-in rule for post status, post meta, or any other runtime check — but the `custom` key accepts a callable that receives the metabox array and returns `bool`. Return `true` to show it. This is how you gate a metabox on anything not covered by the built-in rules.
+
+```php
+public function define(): array
+{
+    $onlyPublished = [
+        'custom' => [$this, 'currentPostIsPublished'],
+    ];
+
+    $metaBoxes[] = [
+        'id' => Metabox::generateKey('event_salesforce'),
+        'title' => 'Salesforce',
+        'post_types' => ['event'],
+        'include' => $onlyPublished,
+        'fields' => [
+            // ...
+        ],
+    ];
+
+    return $metaBoxes;
+}
+
+public function currentPostIsPublished(array $metaBox): bool
+{
+    $editPostId = (int) ($_GET['post'] ?? 0);
+    if (!$editPostId) {
+        return false;
+    }
+
+    $post = get_post($editPostId);
+    return $post instanceof \WP_Post && $post->post_status === 'publish';
+}
+```
+
+Resolve the edited post via `$_GET['post']` rather than `get_post()` — the include/exclude filter runs during metabox registration, before the global `$post` is always set. Return `false` on the new-post screen and anywhere the post can't be resolved, so the metabox stays hidden until it's editing a real row.
+
+Callable forms accepted by `custom`: a function name string, `[$this, 'method']`, or `['ClassName', 'staticMethod']`. Combine with other rules using `relation => 'AND'` if you need both built-in and custom checks to pass.
+
 ## Settings pages
 
 For site-wide options (social links, contact info, etc.). The class implements both `MetaboxPreparerInterface` (to register the settings page) and `MetaboxDefinerInterface` (to define fields on it).
