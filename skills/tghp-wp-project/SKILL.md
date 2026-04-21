@@ -143,6 +143,25 @@ The children still extend `Abstract<Name>` and receive the orchestrator, so they
 
 Use this pattern when a subsystem would otherwise accumulate many unrelated methods or when you find yourself prefixing method names to disambiguate (e.g. `getUserRoles()`, `getUserSubscriptions()`, `getUserGating()` — the prefix is a sign these are separate concerns).
 
+### Registering WordPress hooks
+
+As a general convention, each subsystem registers its own WordPress hooks (`add_action`, `add_filter`) in its `__construct` — not in the orchestrator, and not in a separate `registerHooks()` method. Each subsystem owns its hooks:
+
+```php
+class Enqueues extends Abstract<Name>
+{
+    public function __construct(<Name> $<name>)
+    {
+        parent::__construct($<name>);
+
+        add_action('wp_enqueue_scripts', [$this, 'enqueueScripts']);
+        add_action('wp_enqueue_scripts', [$this, 'unenqueueStyles'], 100);
+    }
+}
+```
+
+Definer-managed classes are the main exception: the definer manager (`PostType`, `Taxonomy`, `Metaboxio\Metabox`, etc.) registers a single `init` hook in its own constructor and then delegates per-entity registration to the definer framework — individual definer classes (e.g. `PostType\Event`) contain only a `define()` method and do not call `add_action`/`add_filter` themselves. Genuinely orchestrator-level hooks may occasionally live on the orchestrator, but those are rare — prefer the subsystem.
+
 ## The Definer Pattern
 
 The definer pattern is how post types, taxonomies, metabox field groups, blocks, forms, and API routes are registered. Each entity gets its own class that extends an abstract base and overrides `define()`.
