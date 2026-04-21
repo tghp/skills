@@ -36,6 +36,30 @@ sass/
 - Breakpoints are defined in `_variables.scss` and shared with `sass-mq` for responsive media queries via the `mq()` mixin wrapper
 - When creating a new page template or post type, create matching SCSS entry points (e.g. `critical--template-about.scss`, `single-event.scss`) — the Asset class will auto-discover and load them on the relevant pages
 
+### Declaration order within a ruleset
+
+Place utility mixins (`@include button`, `@include max-width-element`, `@include block-padding-vertical`) at the top of a ruleset, before CSS properties. Media-query mixins (`@include mq(...)`) are the exception — they go inline at the point they apply, typically after properties or nested inside the element rule they modify.
+
+```scss
+.event-listings {
+  @include block-padding-vertical;
+  @include block-background-colors;
+
+  display: flex;
+  gap: 20px;
+
+  &__heading {
+    font-size: 1.5rem;
+
+    @include mq($from: m) {
+      font-size: 2rem;
+    }
+  }
+}
+```
+
+Keeping base-styling mixins grouped at the top makes it immediately clear what foundation a rule is built on before scanning the overrides below.
+
 ## Class naming: BEM
 
 CSS class names follow **BEM** (Block Element Modifier) convention:
