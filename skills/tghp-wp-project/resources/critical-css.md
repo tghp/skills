@@ -1,4 +1,4 @@
-# Critical CSS System & Template Inheritance
+# Asset Class: CSS, Inline Assets & Template Inheritance
 
 ## CSS Discovery and Output
 
@@ -31,6 +31,32 @@ When creating a new page template or post type, create matching SCSS entry point
 Block-specific styles live in `assets/src/sass/components/blocks/` as `--critical` suffixed partials (e.g. `_page-header--critical.scss`). These are imported via a `_blocks--critical.scss` manifest file.
 
 For the full SASS directory layout, entry point conventions, and the `--critical`/`--non-critical` naming pattern, read `resources/sass-structure.md`.
+
+## Inlining asset file contents: `outputAsset()`
+
+When a template needs the raw contents of a file from the theme's `assets/` directory — most commonly an SVG icon — use `Asset::outputAsset()` rather than hard-coding `<img>` tags, `file_get_contents()` calls, or `get_stylesheet_directory_uri()` paths.
+
+```php
+// Inline an SVG icon (most common use)
+<?= _S()->asset->outputAsset('images/icon-search.svg') ?>
+
+// Dynamic filename
+<?= _S()->asset->outputAsset("images/podcast-icons/{$iconLabel}.svg") ?>
+
+// Base64 data URI (for CSS backgrounds or non-SVG images)
+$logo = _S()->asset->outputAsset('images/logo.png', true);
+```
+
+Signature: `outputAsset(string $path, bool $base64 = false): string`. The path is relative to the `assets/` directory (no leading slash).
+
+Why use it:
+
+- **Template inheritance** — resolves via the same child-theme → parent-theme → plugin chain as CSS/template lookups (see below), so a child theme can override a plugin-shipped SVG by placing a file at the same path
+- **In-memory caching** — repeated calls for the same path don't re-read the file
+- **Environment-aware paths** — routes through `Util::formatPathForEnvironments()` so paths behave correctly across local/staging/production
+- **Correct SVG mime type** — normalises `image/svg` to `image/svg+xml` for data URIs
+
+When you reach for an inline asset in a template, check `_S()->asset->outputAsset()` (or `TGHPSite()->asset->outputAsset()`, per project convention) first — do not hand-roll file reads or enqueue logic for single-asset inlining.
 
 ## Template Inheritance
 
