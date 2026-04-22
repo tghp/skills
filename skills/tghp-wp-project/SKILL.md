@@ -306,7 +306,14 @@ In this project you never use Meta Box's raw `rwmb_meta_boxes` filter directly �
 
 ### Meta Box documentation
 
-For field type options, settings, and extension configuration, read `resources/metabox/index.md` for a table of contents covering the full Meta Box docs. Consult these when choosing field types, looking up field settings, or working with extensions like conditional logic, groups, or relationships.
+`resources/metabox/index.md` is a table of contents for the full Meta Box docs, shipped with the skill. It's the authoritative answer for anything Meta Box-related — prefer it over reading `vendor/meta-box/` source, which is slower to grep and not what the docs are curated to replace.
+
+Read it when:
+
+- Choosing a field type or looking up its settings
+- Checking whether a **metabox group option** exists (`closed`, `context`, `priority`, `default_hidden`, `include`, `revision`, etc. — not just per-field settings)
+- **Verifying a capability before you use it** — e.g. "does Meta Box support collapsing a metabox by default?" is a docs question, not a source-code question. Grep the docs first; only fall back to `vendor/` if the docs genuinely don't cover it
+- Working with any of the extensions (conditional logic, groups, relationships, columns, etc.)
 
 ## Environment & Configuration
 
