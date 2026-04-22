@@ -69,6 +69,10 @@ To target fields to specific page templates, use `include`:
 ],
 ```
 
+### Per-field `class` lands on the wrapper, not the input
+
+The Meta Box per-field `class` arg adds the class to the field's `.rwmb-field` wrapper `<div>` — not the `<input>`/`<textarea>`. Target it with `.rwmb-field.your-class` (no `:has()` needed). The docs say "customize the field" without disambiguating; if you reach for `:has()` to traverse from input up to wrapper, the assumption is wrong and the selector silently matches nothing.
+
 ### Gating a metabox on arbitrary runtime state (e.g. `post_status`)
 
 `include`/`exclude` has no built-in rule for post status, post meta, or any other runtime check — but the `custom` key accepts a callable that receives the metabox array and returns `bool`. Return `true` to show it. This is how you gate a metabox on anything not covered by the built-in rules.
