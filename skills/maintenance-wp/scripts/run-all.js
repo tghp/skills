@@ -11,6 +11,10 @@
 //   ./scripts/run-all.js --days 14       # last 14 days
 //   ./scripts/run-all.js --download      # refresh the Wordfence feed first
 //
+// The core-version and plugin steps also write their findings to
+// ~/.tghp/maintenance-wp/core-findings.json and findings.json (the input for
+// maintenance-notify).
+//
 // Steps run in sequence; a failure in one is reported but does not stop the rest.
 //
 // The since-date only affects releases.js. With no date given, it defaults to
@@ -25,6 +29,8 @@ import { readFileSync, writeFileSync, existsSync } from "fs";
 const HERE = import.meta.dir;
 const DIR = join(homedir(), ".tghp/maintenance-wp");
 const LAST_RUN = join(DIR, "last-run.json");
+const FINDINGS = join(DIR, "findings.json");
+const CORE_FINDINGS = join(DIR, "core-findings.json");
 const FALLBACK_DAYS = 90;
 const startedAt = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
 const argv = process.argv.slice(2);
@@ -91,8 +97,8 @@ preflight();
 const { iso, source } = since();
 const steps = [
   { name: "WordPress core releases", script: "releases.js", args: [iso] },
-  { name: "Watched core versions", script: "watch-versions.js", args: [] },
-  { name: "Plugin security (CVEs)", script: "plugin-security.js", args: download ? ["--download"] : [] },
+  { name: "Watched core versions", script: "watch-versions.js", args: ["--json", CORE_FINDINGS] },
+  { name: "Plugin security (CVEs)", script: "plugin-security.js", args: ["--json", FINDINGS, ...(download ? ["--download"] : [])] },
   { name: "Premium version currency", script: "premium-versions.js", args: [] },
 ];
 
@@ -110,6 +116,8 @@ for (const step of steps) {
 
 console.log(`\n${"=".repeat(72)}\n## Summary\n${"=".repeat(72)}`);
 for (const r of results) console.log(`  ${r.ok ? "✅" : "❌"} ${r.name}${r.ok ? "" : ` (exit ${r.code})`}`);
+console.log(results[1].ok ? `\n  Core findings: ${CORE_FINDINGS}` : `\n  Core version check failed — ${CORE_FINDINGS} not updated.`);
+console.log(results[2].ok ? `  Plugin findings: ${FINDINGS}` : `  Plugin CVE check failed — ${FINDINGS} not updated.`);
 
 // Record this run's start time only if the core-release step succeeded, so a
 // failed fetch doesn't move the window forward and skip releases.

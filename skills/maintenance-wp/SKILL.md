@@ -1,6 +1,6 @@
 ---
 name: maintenance-wp
-description: Use this skill when checking WordPress projects for security updates (core releases, plugin CVEs, premium plugin versions), or answering questions about the scan setup and history. Triggers on requests to check WordPress core updates, WordPress security releases, or WordPress maintenance status.
+description: Use this skill when checking WordPress projects for security updates (core releases, plugin CVEs, premium plugin versions) without sending notifications, or answering questions about the scan setup and history. Triggers on requests to check WordPress core updates, WordPress security releases, or WordPress maintenance status.
 allowed-tools: bash
 ---
 
@@ -109,13 +109,22 @@ Only once the user has asked for one (see **On activation**).
    | Check | Command |
    | --- | --- |
    | core releases | `./scripts/releases.js <isoDate>` (ISO 8601 required) |
-   | core versions | `./scripts/watch-versions.js` |
+   | core versions | `./scripts/watch-versions.js --json ~/.tghp/maintenance-wp/core-findings.json` |
    | plugin CVEs | `./scripts/plugin-security.js [--download]` |
    | premium versions | `./scripts/premium-versions.js` |
 
    Single scripts don't update `last-run.json` — only `run-all.js` does.
 
 4. Read the combined output and write a report to `~/Reports/report-wordpress-<date>.md`, then output its contents. For a single-check run, include only the sections that check covers.
+
+## Structured output
+
+`run-all.js` also writes two findings files, the input for `maintenance-notify`:
+
+- `~/.tghp/maintenance-wp/findings.json`: plugin CVEs (`plugin-security.js --json <path>` standalone). One entry per repo × advisory, with severity, CVSS, CVE, published date, description, an `unauthenticated` flag and fix versions.
+- `~/.tghp/maintenance-wp/core-findings.json`: core security updates (`watch-versions.js --json <path>` standalone). One entry per repo whose installed core version WordPress.org's stable-check API marks **insecure**. The target is the nearest secure version on the same branch (e.g. a 7.0.x backport), otherwise the latest. The entry lists the security releases since the installed version, and is Critical if any of those releases fixed a critical issue. Its `published` field is the date of the first security release the site missed.
+
+Both files include `scanErrors` for repos that couldn't be read. This skill never notifies on its own — Asana tasks and Slack messages come from `maintenance-wp-orchestrator`, which runs this scan and then `maintenance-notify`.
 
 # Report Format
 
@@ -130,6 +139,8 @@ Bullet list of any core releases flagged as security releases. If none: "No crit
 ## Watched Versions Comparison (WordPress core)
 
 Table comparing watched repos against security releases. Columns: Repo · Current Version · Recommended Version · Status (with icons).
+
+Take **Recommended Version** from `~/.tghp/maintenance-wp/core-findings.json` (each insecure repo's `fixedIn`), not from the release list. It's backport-aware: a site on an older branch is pointed at that branch's secure backport (e.g. 7.0.4 → 7.0.6), and those backports often have no release announcement of their own. Repos with no finding there are secure. Mark them ✅ with their current version, noting if a newer branch exists.
 
 ## Plugin Security Audit (CVEs)
 

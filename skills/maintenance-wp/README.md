@@ -118,6 +118,16 @@ plugin CVEs, premium version-currency, and coverage gaps. The dated report is ge
 the `/maintenance-wp` skill (which applies severity grouping and the Meta Box caveat), not by
 `run-all.js` itself — `run-all.js` prints the raw scan output.
 
+## Findings for notifications
+
+`run-all.js` also writes the plugin step's matched CVEs to `~/.tghp/maintenance-wp/findings.json`
+(standalone: `./scripts/plugin-security.js --json <path>`). It writes core security updates to
+`core-findings.json` (standalone: `./scripts/watch-versions.js --json <path>`): one per site whose core
+version WordPress.org marks insecure, targeting the nearest secure version on its branch. Both are the
+input for [`maintenance-notify`](../maintenance-notify/), which creates Asana tasks and Slack messages
+for Critical/High issues. To scan **and** notify in one go, use `/maintenance-wp-orchestrator`; `/maintenance-wp`
+on its own never notifies.
+
 ## Or use it through Claude
 
 Running `/maintenance-wp` **doesn't start a scan**. Claude reads the local status and prints a

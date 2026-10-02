@@ -12,10 +12,12 @@
 // Usage:
 //   ./scripts/plugin-security.js            # audit using cached feed
 //   ./scripts/plugin-security.js --download # (re)download the feed, then audit
+//   ./scripts/plugin-security.js --json <path>  # also write matched vulns as JSON
+//                                               # (input for maintenance-notify)
 
 import { homedir } from "os";
 import { join } from "path";
-import { readFileSync, existsSync, writeFileSync } from "fs";
+import { readFileSync, existsSync, writeFileSync, statSync } from "fs";
 
 const CFG = join(homedir(), ".tghp/maintenance-wp/config.json");
 const FEED = join(homedir(), ".tghp/maintenance-wp/wordfence-feed.json");
@@ -163,6 +165,7 @@ function indexFeed(feed) {
     for (const sw of v.software || []) {
       if (sw.type !== "plugin" || !sw.slug) continue;
       (idx[sw.slug] ??= []).push({
+        id: v.id || id,
         title: v.title,
         cve: v.cve || (v.cwe ? "" : ""),
         severity: v.cvss?.rating || "Unknown",
@@ -170,13 +173,25 @@ function indexFeed(feed) {
         affected: Object.values(sw.affected_versions || {}),
         patched: sw.patched,
         patched_versions: sw.patched_versions || [],
+        remediation: sw.remediation || "",
+        description: v.description || "",
+        published: v.published || "",
+        references: v.references || [],
+        vector: v.cvss?.vector || "",
+        cwe: v.cwe?.name || "",
       });
     }
   }
   return idx;
 }
 
+// Wordfence timestamps are "YYYY-MM-DD HH:MM:SS" (UTC); keep the date part.
+const feedDate = s => (String(s || "").match(/^\d{4}-\d{2}-\d{2}/) || [""])[0];
+
 async function main() {
+  const jsonIdx = process.argv.indexOf("--json");
+  const jsonPath = jsonIdx >= 0 ? process.argv[jsonIdx + 1] : null;
+  if (jsonIdx >= 0 && (!jsonPath || jsonPath.startsWith("--"))) die("--json needs an output path.");
   if (process.argv.includes("--download")) await downloadFeed();
   if (!existsSync(CFG)) die(`No config at ${CFG}`);
   if (!existsSync(FEED)) die(`No cached feed at ${FEED}. Run with --download first.`);
@@ -185,10 +200,16 @@ async function main() {
   const config = JSON.parse(readFileSync(CFG, "utf8"));
   const feed = JSON.parse(readFileSync(FEED, "utf8"));
   const idx = indexFeed(feed);
+  const findings = []; // structured copy of every [VULN] line, for --json
+  const scanErrors = []; // repos that couldn't be scanned — their CVEs would go unseen
 
   for (const entry of config.repos) {
     const lock = await ghComposerLock(entry.repo, entry.composerDir);
-    if (!lock) { console.log(`\n## ${entry.repo}\n  (composer.lock not found)`); continue; }
+    if (!lock) {
+      console.log(`\n## ${entry.repo}\n  (composer.lock not found)`);
+      scanErrors.push({ repo: entry.repo, error: "composer.lock not found or unreadable" });
+      continue;
+    }
     const { scan, unscanned, bundles } = extractPlugins(lock);
 
     // Resolve meta-box-aio bundles: scan the AIO version as `meta-box-aio`, and
@@ -222,14 +243,37 @@ async function main() {
 
     let anyVuln = false;
     for (const pl of scannable) {
+      // A record can list the same slug more than once (e.g. several editions),
+      // so keep one match per record id.
+      const seen = new Set();
       const vulns = (idx[pl.slug] || []).filter(v =>
-        v.affected.some(r => inRange(pl.version, r)));
+        v.affected.some(r => inRange(pl.version, r)) && !seen.has(v.id) && seen.add(v.id));
       if (vulns.length) {
         anyVuln = true;
         for (const v of vulns) {
           const fix = v.patched_versions?.length ? ` → fixed in ${v.patched_versions.join(", ")}` : (v.patched ? "" : " (no patch available)");
           const src = pl.via ? ` [bundled core in ${pl.via}]` : pl.guessed ? ` [slug guessed from ${pl.composer}]` : "";
           console.log(`  [VULN] ${pl.slug} ${pl.version}${src} — ${v.severity}${v.score ? ` ${v.score}` : ""} — ${v.title}${v.cve ? ` (${v.cve})` : ""}${fix}`);
+          findings.push({
+            key: `${entry.repo}:${pl.slug}:${v.id}`,
+            repo: entry.repo,
+            component: pl.slug,
+            composer: pl.composer,
+            installed: pl.version,
+            fixedIn: v.patched_versions || [],
+            patched: !!v.patched,
+            severity: v.severity,
+            score: v.score === "" ? null : v.score,
+            cve: v.cve || null,
+            title: v.title,
+            description: v.description,
+            published: feedDate(v.published),
+            unauthenticated: /\bPR:N\b/.test(v.vector),
+            cwe: v.cwe || null,
+            remediation: v.remediation || null,
+            references: v.references,
+            via: pl.via ? `bundled core in ${pl.via}` : pl.guessed ? `slug guessed from ${pl.composer}` : null,
+          });
         }
       }
     }
@@ -244,6 +288,20 @@ async function main() {
       console.log("  Not scanned:");
       for (const u of unscanned) console.log(`    - ${u.name} ${u.version}  (${u.reason})`);
     }
+  }
+
+  if (jsonPath) {
+    const out = {
+      source: "wordpress",
+      generatedAt: new Date().toISOString().replace(/\.\d{3}Z$/, "Z"),
+      feedDate: statSync(FEED).mtime.toISOString().replace(/\.\d{3}Z$/, "Z"),
+      // The feed licence requires attribution wherever the records are reproduced.
+      attribution: `Vulnerability data: Wordfence Intelligence. Copyright 2012-${new Date().getUTCFullYear()} Defiant Inc. Licence: https://www.wordfence.com/wordfence-intelligence-terms-and-conditions/`,
+      findings,
+      scanErrors,
+    };
+    writeFileSync(jsonPath, JSON.stringify(out, null, 2) + "\n");
+    console.log(`\nWrote ${findings.length} finding(s) to ${jsonPath}`);
   }
 }
 

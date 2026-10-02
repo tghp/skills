@@ -14,6 +14,8 @@ Or for individual skills:
 pnpx skills add tghp/skills --skill tghp-wp-project
 pnpx skills add tghp/skills --skill maintenance-js
 pnpx skills add tghp/skills --skill maintenance-wp
+pnpx skills add tghp/skills --skill maintenance-notify
+pnpx skills add tghp/skills --skill maintenance-wp-orchestrator
 ```
 
 ## Skills
@@ -23,6 +25,8 @@ pnpx skills add tghp/skills --skill maintenance-wp
 | [tghp-wp-project](./skills/tghp-wp-project/) | Guidance for agents when working with TGHP WP codebases |
 | [maintenance-js](./skills/maintenance-js/) | Security update checks for JS packages (Payload CMS, Next.js, Astro) |
 | [maintenance-wp](./skills/maintenance-wp/) | Security update checks for WordPress core, plugin CVEs (Wordfence) and premium plugin versions |
+| [maintenance-notify](./skills/maintenance-notify/) | Asana tasks + Slack notifications for Critical/High CVEs found by a maintenance skill |
+| [maintenance-wp-orchestrator](./skills/maintenance-wp-orchestrator/) | Runs `maintenance-wp` then `maintenance-notify`: scan, report, tasks and notifications in one go |
 
 ## Setup
 
@@ -99,3 +103,16 @@ cd skills/maintenance-wp && ./scripts/premium-versions.js --init
 ```
 
 This creates `config.json` (empty `repos`, with an `_example`) and `licenses.json` (`chmod 600`, never commit it) in `~/.tghp/maintenance-wp/`, and won't overwrite either if it exists. `licenses.json` holds vendor license keys for the premium version check; keys are optional, but the file must exist. Running `/maintenance-wp` checks all of the above and lists anything missing. See [skills/maintenance-wp/README.md](./skills/maintenance-wp/README.md) for full details.
+
+#### `maintenance-notify`
+
+Config: `~/.tghp/maintenance-notify/config.json`. It maps each repo to its Asana section, its **Client** field option and its Slack channel, and sets the alerts channel for failures. Generate it with `./scripts/discover.js` (in `skills/maintenance-notify`), then check anything it flags.
+
+It needs two more env vars:
+
+```
+export ASANA_ACCESS_TOKEN=your_token   # Asana personal access token
+export SLACK_BOT_TOKEN=xoxb-...        # Slack app bot token, chat:write scope
+```
+
+The bot must be invited to every repo channel and the alerts channel. See [skills/maintenance-notify/README.md](./skills/maintenance-notify/README.md) for details.
