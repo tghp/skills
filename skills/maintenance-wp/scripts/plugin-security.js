@@ -180,6 +180,7 @@ async function main() {
   if (process.argv.includes("--download")) await downloadFeed();
   if (!existsSync(CFG)) die(`No config at ${CFG}`);
   if (!existsSync(FEED)) die(`No cached feed at ${FEED}. Run with --download first.`);
+  if (!process.env.GITHUB_PERSONAL_ACCESS_TOKEN) die("GITHUB_PERSONAL_ACCESS_TOKEN not set.");
 
   const config = JSON.parse(readFileSync(CFG, "utf8"));
   const feed = JSON.parse(readFileSync(FEED, "utf8"));

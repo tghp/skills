@@ -20,10 +20,11 @@
 import { spawnSync } from "child_process";
 import { join } from "path";
 import { homedir } from "os";
-import { readFileSync, writeFileSync } from "fs";
+import { readFileSync, writeFileSync, existsSync } from "fs";
 
 const HERE = import.meta.dir;
-const LAST_RUN = join(homedir(), ".tghp/maintenance-wp/last-run.json");
+const DIR = join(homedir(), ".tghp/maintenance-wp");
+const LAST_RUN = join(DIR, "last-run.json");
 const FALLBACK_DAYS = 90;
 const startedAt = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
 const argv = process.argv.slice(2);
@@ -61,6 +62,32 @@ function since() {
   return { iso: daysAgoIso(FALLBACK_DAYS), source: `no previous run recorded — last ${FALLBACK_DAYS} days` };
 }
 
+// Preflight: fail fast on setup that would make every step fail or mislead,
+// and warn about setup that only skips part of the scan.
+function preflight() {
+  const errors = [], warnings = [];
+  if (!existsSync(join(HERE, "../node_modules"))) errors.push("Dependencies not installed — run `bun install` in the skill folder.");
+  const cfg = join(DIR, "config.json");
+  if (!existsSync(cfg)) errors.push(`No config at ${cfg} — run ./scripts/premium-versions.js --init, then list your repos under \`repos\`.`);
+  else {
+    let repos;
+    try { repos = JSON.parse(readFileSync(cfg, "utf8")).repos; }
+    catch (e) { errors.push(`Can't read ${cfg}: ${e.message}`); repos = null; }
+    if (repos !== null && !(Array.isArray(repos) && repos.length)) errors.push(`No repos in ${cfg} — add { "repo": "owner/name" } entries under \`repos\`.`);
+  }
+  if (!process.env.GITHUB_PERSONAL_ACCESS_TOKEN) errors.push("GITHUB_PERSONAL_ACCESS_TOKEN not set — add `export GITHUB_PERSONAL_ACCESS_TOKEN=...` to ~/.zshrc (fine-grained PAT, Contents: Read-only).");
+  if (!existsSync(join(DIR, "licenses.json"))) warnings.push("No licenses.json — the premium version check will fail. Run ./scripts/premium-versions.js --init to create it.");
+  if (download && !process.env.WORDFENCE_API_TOKEN) errors.push("--download needs WORDFENCE_API_TOKEN — add `export WORDFENCE_API_TOKEN=...` to ~/.zshrc (free token from the Wordfence dashboard, Integrations).");
+  else if (!download && !existsSync(join(DIR, "wordfence-feed.json"))) warnings.push("No cached Wordfence feed — the plugin CVE check will fail. Re-run with --download.");
+  for (const w of warnings) console.log(`⚠️  ${w}`);
+  if (errors.length) {
+    for (const e of errors) console.error(`❌ ${e}`);
+    console.error("\nSetup incomplete — see the skill's README.md (Prerequisites).");
+    process.exit(1);
+  }
+}
+
+preflight();
 const { iso, source } = since();
 const steps = [
   { name: "WordPress core releases", script: "releases.js", args: [iso] },

@@ -29,6 +29,11 @@ try {
   process.exit(1);
 }
 
+if (!process.env.GITHUB_PERSONAL_ACCESS_TOKEN) {
+  console.error('GITHUB_PERSONAL_ACCESS_TOKEN not set.');
+  process.exit(1);
+}
+
 const noop = () => {};
 
 const octokit = new Octokit({

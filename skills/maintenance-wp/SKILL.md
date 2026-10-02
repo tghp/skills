@@ -12,18 +12,44 @@ All JS scripts live in `scripts/` and run directly (each has a `#!/usr/bin/env b
 
 ## Setup
 
-On an already-configured machine, skip to **Steps**. First-time setup (one-time):
+On an already-configured machine, skip to **On activation**. First-time setup (one-time):
 
-1. Set env vars: `GITHUB_PERSONAL_ACCESS_TOKEN` (reads each repo's `composer.lock`) and, for feed refreshes, `WORDFENCE_API_TOKEN`.
-2. `./scripts/premium-versions.js --init` — scaffolds `~/.tghp/maintenance-wp/config.json` and `licenses.json`, creating the directory. Safe to re-run: it won't overwrite an existing file.
-3. Edit `config.json` → `repos` to list the sites to scan (it ships empty with a commented `_example`). Optionally add vendor keys to `licenses.json` (`chmod 600`) for the premium version check — without them, those entries are skipped.
-4. `./scripts/run-all.js --download` on the first run fetches the Wordfence feed to `wordfence-feed.json`.
+1. `bun install` in this skill's folder.
+2. Set env vars: `GITHUB_PERSONAL_ACCESS_TOKEN` (reads each repo's `composer.lock`) and, for feed refreshes, `WORDFENCE_API_TOKEN`.
+3. `./scripts/premium-versions.js --init` — scaffolds `~/.tghp/maintenance-wp/config.json` and `licenses.json`, creating the directory. Safe to re-run: it won't overwrite an existing file.
+4. Edit `config.json` → `repos` to list the sites to scan (it ships empty with a commented `_example`). Optionally add vendor keys to `licenses.json` (`chmod 600`) for the premium version check — entries without keys are skipped, but the file itself must exist or the premium check fails.
+5. `./scripts/run-all.js --download` on the first run fetches the Wordfence feed to `wordfence-feed.json`.
 
-Everything lives in `~/.tghp/maintenance-wp/`: `config.json` and `licenses.json` (created by step 2), `wordfence-feed.json` (created by `--download`), `last-run.json` (written by `run-all.js`). The only thing you must provide by hand is the env vars and the repo list.
+Everything lives in `~/.tghp/maintenance-wp/`: `config.json` and `licenses.json` (created by step 3), `wordfence-feed.json` (created by `--download`), `last-run.json` (written by `run-all.js`). The only thing you must provide by hand is the env vars and the repo list.
 
 ## On activation — show the steps, don't scan
 
-When the skill is activated (e.g. `/maintenance-wp` with no arguments), **don't run any scan scripts**. Scans hit GitHub and vendor APIs, and `--download` spends the rate-limited Wordfence quota. Instead, read the local status (below — file reads only, no scripts) and print a brief overview, then wait:
+When the skill is activated (e.g. `/maintenance-wp` with no arguments), **don't run any scan scripts**. Scans hit GitHub and vendor APIs, and `--download` spends the rate-limited Wordfence quota. Instead, check setup, then read the local status (below — file reads only, no scripts) and print a brief overview, then wait.
+
+**Setup check first.** Confirm each of these (file reads plus `[ -n "$VAR" ] && echo set || echo missing` — never print a token's value):
+
+- `node_modules/` exists in this skill's folder
+- `~/.tghp/maintenance-wp/config.json` exists and its `repos` is non-empty
+- `~/.tghp/maintenance-wp/licenses.json` exists
+- `GITHUB_PERSONAL_ACCESS_TOKEN` is set
+- `WORDFENCE_API_TOKEN` is set, or `~/.tghp/maintenance-wp/wordfence-feed.json` exists
+
+If any are missing, print this instead of the overview, listing only the missing items, and wait:
+
+```
+maintenance-wp — setup incomplete.
+
+- Dependencies not installed → run `bun install` in <skill folder>
+- No config.json → run `./scripts/premium-versions.js --init`, then list your sites under `repos`
+- config.json has no repos → add `{ "repo": "owner/name" }` entries under `repos`
+- No licenses.json → run `./scripts/premium-versions.js --init` (vendor keys are optional)
+- GITHUB_PERSONAL_ACCESS_TOKEN not set → add `export GITHUB_PERSONAL_ACCESS_TOKEN=...` to ~/.zshrc (fine-grained PAT, Contents: Read-only, access to the repos), then restart the terminal
+- No Wordfence feed and WORDFENCE_API_TOKEN not set → add `export WORDFENCE_API_TOKEN=...` to ~/.zshrc (free token: Wordfence dashboard → Integrations)
+
+Want me to do the steps I can (bun install, --init)?
+```
+
+You may run `bun install` and `--init` if the user says yes — neither hits a scan API. The env vars and the repo list are theirs to provide. Once setup is complete, show the overview:
 
 ```
 maintenance-wp — nothing has been run.

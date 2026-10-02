@@ -22,7 +22,7 @@ pnpx skills add tghp/skills --skill maintenance-wp
 | ----- | ----------- |
 | [tghp-wp-project](./skills/tghp-wp-project/) | Guidance for agents when working with TGHP WP codebases |
 | [maintenance-js](./skills/maintenance-js/) | Security update checks for JS packages (Payload CMS, Next.js, Astro) |
-| [maintenance-wp](./skills/maintenance-wp/) | Security update checks for WordPress core |
+| [maintenance-wp](./skills/maintenance-wp/) | Security update checks for WordPress core, plugin CVEs (Wordfence) and premium plugin versions |
 
 ## Setup
 
@@ -39,6 +39,12 @@ Both maintenance skills use the GitHub API for checking repo versions. Add an ac
 
 ```
 export GITHUB_PERSONAL_ACCESS_TOKEN=your_token
+```
+
+`maintenance-wp` also uses the Wordfence Intelligence feed for plugin CVEs. Add a free API token from the Wordfence dashboard (Integrations) — it's only needed when refreshing the feed (`--download`):
+
+```
+export WORDFENCE_API_TOKEN=your_token
 ```
 
 ### Watched Repos
@@ -84,4 +90,12 @@ Config: `~/.tghp/maintenance-wp/config.json`
 }
 ```
 
-`repos` lists the repos to check. The skill looks for `johnpbloch/wordpress` in each repo's `composer.lock`. Use `composerDir` for monorepos where `composer.lock` isn't at the root.
+`repos` lists the repos to check. The skill reads each repo's `composer.lock` for `johnpbloch/wordpress` and the installed plugins. Use `composerDir` for monorepos where `composer.lock` isn't at the root.
+
+Rather than writing it by hand, scaffold both config files with:
+
+```
+cd skills/maintenance-wp && ./scripts/premium-versions.js --init
+```
+
+This creates `config.json` (empty `repos`, with an `_example`) and `licenses.json` (`chmod 600`, never commit it) in `~/.tghp/maintenance-wp/`, and won't overwrite either if it exists. `licenses.json` holds vendor license keys for the premium version check; keys are optional, but the file must exist. Running `/maintenance-wp` checks all of the above and lists anything missing. See [skills/maintenance-wp/README.md](./skills/maintenance-wp/README.md) for full details.
