@@ -121,7 +121,7 @@ Only once the user has asked for one (see **On activation**).
 
 `run-all.js` also writes two findings files, the input for `maintenance-notify`:
 
-- `~/.tghp/maintenance-wp/findings.json`: plugin CVEs (`plugin-security.js --json <path>` standalone). One entry per repo × advisory, with severity, CVSS, CVE, published date, description, an `unauthenticated` flag and fix versions.
+- `~/.tghp/maintenance-wp/findings.json`: plugin CVEs (`plugin-security.js --json <path>` standalone). One entry per repo × advisory, with a `group` (repo + plugin + installed version, so notify sends one task per plugin update), severity, CVSS, CVE, published date, description, an `unauthenticated` flag and fix versions.
 - `~/.tghp/maintenance-wp/core-findings.json`: core security updates (`watch-versions.js --json <path>` standalone). One entry per repo whose installed core version WordPress.org's stable-check API marks **insecure**. The target is the nearest secure version on the same branch (e.g. a 7.0.x backport), otherwise the latest. The entry lists the security releases since the installed version, and is Critical if any of those releases fixed a critical issue. Its `published` field is the date of the first security release the site missed.
 
 Both files include `scanErrors` for repos that couldn't be read. This skill never notifies on its own — Asana tasks and Slack messages come from `maintenance-wp-orchestrator`, which runs this scan and then `maintenance-notify`.

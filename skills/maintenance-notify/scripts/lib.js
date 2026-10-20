@@ -25,6 +25,17 @@ export const SOURCES = {
 export const SEVERITIES = ["None", "Low", "Medium", "High", "Critical"];
 export const severityRank = s => SEVERITIES.indexOf(s);
 
+// Compare dotted versions (leading v and suffixes ignored): <0, 0 or >0.
+export function compareVersions(a, b) {
+  const parse = v => String(v ?? "").replace(/^v/i, "").split(/[.+-]/).map(n => parseInt(n, 10) || 0);
+  const A = parse(a), B = parse(b);
+  for (let i = 0; i < Math.max(A.length, B.length); i++) {
+    const x = A[i] ?? 0, y = B[i] ?? 0;
+    if (x !== y) return x < y ? -1 : 1;
+  }
+  return 0;
+}
+
 export function die(msg) { console.error(msg); process.exit(1); }
 
 export function readJson(path, fallback) {

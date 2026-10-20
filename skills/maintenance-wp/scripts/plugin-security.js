@@ -166,6 +166,7 @@ function indexFeed(feed) {
       if (sw.type !== "plugin" || !sw.slug) continue;
       (idx[sw.slug] ??= []).push({
         id: v.id || id,
+        name: sw.name || "",
         title: v.title,
         cve: v.cve || (v.cwe ? "" : ""),
         severity: v.cvss?.rating || "Unknown",
@@ -256,7 +257,11 @@ async function main() {
           console.log(`  [VULN] ${pl.slug} ${pl.version}${src} — ${v.severity}${v.score ? ` ${v.score}` : ""} — ${v.title}${v.cve ? ` (${v.cve})` : ""}${fix}`);
           findings.push({
             key: `${entry.repo}:${pl.slug}:${v.id}`,
+            // Every CVE in one installed plugin version is fixed by the same
+            // update, so notify sends them as one task + message.
+            group: `${entry.repo}:${pl.slug}:${pl.version}`,
             repo: entry.repo,
+            name: v.name || null,
             component: pl.slug,
             composer: pl.composer,
             installed: pl.version,

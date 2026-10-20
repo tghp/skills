@@ -50,10 +50,12 @@ after a scan.
 ./scripts/notify.js --status     # undelivered notifications from earlier runs
 ```
 
-Tasks are titled `<Client>: <CVE title>`. Each task:
+CVEs fixed by the same plugin update get one task and one Slack message, titled
+`<Client>: Update <Plugin> <installed> → <version that fixes them all> (N vulnerabilities)`, with
+every CVE in the description. Core tasks are titled `<Client>: <title>`. Each task:
 
 - is assigned to `asana.assignee`
-- is due one month after the CVE's published date (core: after the first security release the site missed); change it with `dueAfterMonths` in the config
+- is due one month after the CVE's published date (the earliest CVE, for a plugin update; core: after the first security release the site missed); change it with `dueAfterMonths` in the config
 - has the Client field set
 - carries the full vulnerability details in its description
 

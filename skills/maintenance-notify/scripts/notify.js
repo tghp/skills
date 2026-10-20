@@ -15,8 +15,13 @@
 // they go to the alerts Slack channel (or a comment on the Asana task), a macOS
 // notification, a ❌ block in the output, the report banner, and exit code 2.
 //
+// Findings that share a `group` (e.g. every CVE in one installed plugin
+// version) are sent as one notification: one task + message for the single
+// update that fixes them all, listing every CVE.
+//
 // A finding with a `revision` (e.g. the target core version) updates its
 // existing task in place when the revision changes, rather than adding a task.
+// A group's revision is its set of CVEs, so a new CVE updates the same task.
 //
 // Usage:
 //   ./scripts/notify.js [--source wordpress] [--findings <path>[,<path>…]]
@@ -29,7 +34,7 @@
 
 import { existsSync, readFileSync, writeFileSync } from "fs";
 import {
-  DIR, CFG, LEDGER, SOURCES, severityRank, arg, die, readJson, writeJson,
+  DIR, CFG, LEDGER, SOURCES, severityRank, compareVersions, arg, die, readJson, writeJson,
   asana, asanaAll, slack, slackEscape, desktopAlert,
 } from "./lib.js";
 import { join } from "path";
@@ -84,10 +89,67 @@ if (!cfg) problems.push(`No "${source}" block in ${CFG} — run ./scripts/discov
 const minRank = severityRank(cfg?.minSeverity || "High");
 if (cfg && minRank < 0) problems.push(`Unknown minSeverity "${cfg.minSeverity}" in ${CFG}.`);
 
-// --- 3. Queue qualifying findings in the ledger -----------------------------
-const qualifyingWith = findings.filter(({ f }) => severityRank(f.severity) >= (minRank < 0 ? severityRank("High") : minRank));
+// --- 3. Group + queue qualifying findings in the ledger -----------------------
+// One update that fixes several CVEs → one combined finding, keyed by its group.
+function combine(key, vulns) {
+  vulns.sort((a, b) => severityRank(b.severity) - severityRank(a.severity) || String(a.published).localeCompare(String(b.published)));
+  const top = vulns[0], n = vulns.length;
+  // Wordfence names vary per record and often carry a tagline ("Ninja Forms – Contact Form Builder…"):
+  // drop it, then take the shortest.
+  const name = vulns.map(v => v.name?.split(" – ")[0].trim()).filter(Boolean).sort((a, b) => a.length - b.length)[0] || top.component;
+  // Each CVE's fix is its lowest patched version above the installed one; the update must reach the highest of those.
+  const fixes = vulns.map(v => {
+    const all = v.fixedIn || [], later = all.filter(x => compareVersions(x, top.installed) > 0);
+    return (later.length ? later : all).sort(compareVersions)[0] || null;
+  });
+  const target = fixes.filter(Boolean).sort(compareVersions).at(-1) || null;
+  const unpatched = fixes.filter(x => !x).length;
+  const scores = vulns.map(v => v.score).filter(x => typeof x === "number");
+  const count = `${n} vulnerabilit${n === 1 ? "y" : "ies"}`;
+  return {
+    key, repo: top.repo, component: top.component, composer: top.composer, name, installed: top.installed,
+    fixedIn: target ? [target] : [], patched: !!target,
+    severity: top.severity, score: scores.length ? Math.max(...scores) : null,
+    unauthenticated: vulns.some(v => v.unauthenticated === true) || (vulns.every(v => v.unauthenticated === false) ? false : null),
+    published: vulns.map(v => v.published).filter(Boolean).sort()[0] || null, // earliest, so the due date is the most urgent
+    via: top.via,
+    title: target
+      ? `Update ${name} ${top.installed} → ${target} (${count}${unpatched ? `, ${unpatched} unpatched` : ""})`
+      : `${name} ${top.installed}: ${count}, no patch available`,
+    revision: vulns.map(v => v.key).sort().join(","),
+    unpatched, vulns,
+  };
+}
+
+const qualifyingWith = [];
+const groups = new Map();
+for (const x of findings.filter(({ f }) => severityRank(f.severity) >= (minRank < 0 ? severityRank("High") : minRank))) {
+  if (!x.f.group) { qualifyingWith.push(x); continue; }
+  if (!groups.has(x.f.group)) groups.set(x.f.group, { attribution: x.attribution, vulns: [] });
+  groups.get(x.f.group).vulns.push(x.f);
+}
+for (const [key, g] of groups) qualifyingWith.push({ f: combine(key, g.vulns), attribution: g.attribution });
 const qualifying = qualifyingWith.map(({ f }) => f);
+
 for (const { f, attribution } of qualifyingWith) {
+  // CVEs notified one by one before grouping: fold them into the group and
+  // keep the earliest of their tasks, so nothing is re-sent. New CVEs in the
+  // group trigger the usual revision update.
+  if (f.vulns && !ledger[f.key]) {
+    const old = f.vulns.map(v => v.key).filter(k => ledger[k]);
+    const withTask = old.map(k => ledger[k]).filter(o => o.asana).sort((a, b) => String(a.asana.at).localeCompare(String(b.asana.at)));
+    const keep = withTask.find(o => o.slack) || withTask[0];
+    if (keep) {
+      ledger[f.key] = {
+        source, queuedAt: keep.queuedAt, asana: keep.asana,
+        slack: keep.slack ? { assumed: true, at: nowIso() } : null,
+        finding: { revision: old.length === f.vulns.length ? f.revision : null },
+        mergedFrom: old.map(k => ({ key: k, asana: ledger[k].asana?.gid || null })),
+      };
+      if (ledger[f.key].slack) ledger[f.key].deliveredAt = nowIso();
+      for (const k of old) delete ledger[k];
+    }
+  }
   const e = (ledger[f.key] ??= { source, queuedAt: nowIso() });
   // A delivered finding whose revision moved on (e.g. a newer core security
   // release) gets its task updated and a fresh Slack message.
@@ -148,8 +210,35 @@ function dueOn(published) {
   return new Date(Date.UTC(y, mo - 1 + months, Math.min(d, last))).toISOString().slice(0, 10);
 }
 
+const line = (label, html) => `<strong>${label}:</strong> ${html}\n`;
+const refList = refs => refs?.length ? `<ul>${refs.map(r => `<li><a href="${esc(r)}">${esc(r)}</a></li>`).join("")}</ul>` : "";
+
+function groupNotes(f, attr) {
+  return "<body>" +
+    line("Repo", esc(f.repo)) +
+    line("Package", `${esc(f.name)} (${esc(f.composer)})`) +
+    line("Installed", `${esc(f.installed)} → ${f.fixedIn.length ? `update to <strong>${esc(f.fixedIn[0])}</strong>${f.vulns.length > 1 ? ", which fixes " + (f.unpatched ? `all but ${f.unpatched}` : "all") + " of the vulnerabilities below" : ""}` : "no patch available"}`) +
+    line("Severity", `${esc(f.severity)}${f.score != null ? ` (CVSS ${esc(f.score)})` : ""} (highest)`) +
+    (f.unauthenticated ? line("Unauthenticated", "<strong>Yes</strong> (at least one)") : "") +
+    line("Published", `${esc(f.published || "unknown")} (earliest)`) +
+    (f.via ? `\n<em>Note: ${esc(f.via)} — the findings are inferred from that, not advisories keyed to this exact package. Confirm before acting.</em>\n` : "") +
+    f.vulns.map(v =>
+      `\n<h2>${esc(v.title)}</h2>` +
+      line("Severity", `${esc(v.severity)}${v.score != null ? ` (CVSS ${esc(v.score)})` : ""}`) +
+      line("Fixed in", v.fixedIn?.length ? esc(v.fixedIn.join(", ")) : "no patch available") +
+      (typeof v.unauthenticated === "boolean" ? line("Unauthenticated", v.unauthenticated ? "<strong>Yes</strong>" : "No") : "") +
+      (v.cve ? line("CVE", `<a href="${esc(cveUrl(v.cve))}">${esc(v.cve)}</a>`) : "") +
+      (v.cwe ? line("Weakness", esc(v.cwe)) : "") +
+      line("Published", esc(v.published || "unknown")) +
+      `\n${esc(v.description || "—")}\n` +
+      refList(v.references)
+    ).join("") +
+    (attr ? `\n<em>${esc(attr)}</em>\n` : "") +
+    `\n<code>${esc(f.key)}</code></body>`;
+}
+
 function taskNotes(f, attr) {
-  const line = (label, html) => `<strong>${label}:</strong> ${html}\n`;
+  if (f.vulns) return groupNotes(f, attr);
   return "<body>" +
     line("Repo", esc(f.repo)) +
     line("Package", `${esc(f.component)} (${esc(f.composer)})`) +
@@ -162,7 +251,7 @@ function taskNotes(f, attr) {
     (f.via ? `\n<em>Note: ${esc(f.via)} — the finding is inferred from that, not an advisory keyed to this exact package. Confirm before acting.</em>\n` : "") +
     `\n<h2>Description</h2>${esc(f.description || "—")}\n` +
     (f.remediation ? `\n<h2>Remediation</h2>${esc(f.remediation)}\n` : "") +
-    (f.references?.length ? `\n<h2>References</h2><ul>${f.references.map(r => `<li><a href="${esc(r)}">${esc(r)}</a></li>`).join("")}</ul>` : "") +
+    (f.references?.length ? `\n<h2>References</h2>${refList(f.references)}` : "") +
     (attr ? `\n<em>${esc(attr)}</em>\n` : "") +
     `\n<code>${esc(f.key)}</code></body>`;
 }
@@ -172,14 +261,22 @@ function findingLine(f) {
   const fix = f.fixedIn?.length ? `fixed in ${slackEscape(f.fixedIn.join(", "))}` : "no patch available";
   return `\`${slackEscape(f.component)}\` ${slackEscape(f.installed)} → ${fix}${f.cve ? ` · <${cveUrl(f.cve)}|${slackEscape(f.cve)}>` : ""} · published ${slackEscape(f.published || "?")}`;
 }
+// One line per CVE in a group, capped to stay inside Slack's section limit.
+function vulnLines(f) {
+  const shown = f.vulns.slice(0, 10).map(v =>
+    `• *${slackEscape(v.severity)}* ${slackEscape(v.title)}${v.cve ? ` · <${cveUrl(v.cve)}|${slackEscape(v.cve)}>` : ""} · ${v.fixedIn?.length ? `fixed in ${slackEscape(v.fixedIn.join(", "))}` : "no patch"}`);
+  return [...shown, ...(f.vulns.length > 10 ? [`…and ${f.vulns.length - 10} more (see the task)`] : [])].join("\n");
+}
 function slackMessage(f, taskUrl, updated) {
   const head = `${emoji(f)} *${slackEscape(f.severity)}*${f.score != null ? ` (${f.score})` : ""}${f.unauthenticated ? " · *Unauthenticated*" : ""} · ${slackEscape(f.repo)}`;
+  const body = f.vulns ? vulnLines(f) : findingLine(f);
+  const why = f.vulns ? "the vulnerabilities for this update changed" : "a newer fix is now needed";
   return {
-    text: `${f.severity} CVE in ${f.repo}: ${f.title}`,
+    text: `${f.severity} CVE${f.vulns?.length > 1 ? "s" : ""} in ${f.repo}: ${f.title}`,
     unfurl_links: false,
     blocks: [
-      { type: "section", text: { type: "mrkdwn", text: `${head}\n*<${taskUrl}|${slackEscape(f.title)}>*\n${findingLine(f)}` } },
-      { type: "context", elements: [{ type: "mrkdwn", text: updated ? "Asana task updated by maintenance-notify — a newer fix is now needed" : "Asana task created by maintenance-notify" }] },
+      { type: "section", text: { type: "mrkdwn", text: `${head}\n*<${taskUrl}|${slackEscape(f.title)}>*\n${body}` } },
+      { type: "context", elements: [{ type: "mrkdwn", text: updated ? `Asana task updated by maintenance-notify — ${why}` : "Asana task created by maintenance-notify" }] },
     ],
   };
 }
@@ -240,7 +337,8 @@ if (dryRun) {
     if (!e.asana) {
       if (!asanaOk) { fail(key, "Asana", asanaErr || "unavailable"); continue; }
       const name = taskName(m, f);
-      const existing = existingTasks?.find(t => t.notes?.includes(key));
+      const keys = [key, ...(f.vulns || []).map(v => v.key)]; // + per-CVE tasks from before grouping
+      const existing = existingTasks?.find(t => keys.some(k => t.notes?.includes(k)));
       if (existing) {
         // Created on an earlier run whose ledger is gone; assume Slack went out too.
         e.asana = { gid: existing.gid, url: existing.permalink_url, at: nowIso(), found: true };

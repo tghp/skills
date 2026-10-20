@@ -7,12 +7,14 @@ allowed-tools: bash
 Turn a discovery skill's findings into Asana tasks and Slack messages. For each finding at or above the source's `minSeverity` (default **High**, so Critical + High), in order:
 
 1. Create an Asana task in the repo's section of the source's board (WordPress: **Maintenance: WordPress**):
-   - **Title:** `<Client>: <CVE title>`
+   - **Title:** `<Client>: <CVE title>`, or for a plugin `<Client>: Update <Plugin> <installed> → <version that fixes them all> (N vulnerabilities)`
    - **Assignee:** the configured assignee
-   - **Due date:** one month after the CVE's published date (or, for core, the first missed security release). Set by `dueAfterMonths` in the config, default 1.
+   - **Due date:** one month after the CVE's published date (the earliest, for a group; or, for core, the first missed security release). Set by `dueAfterMonths` in the config, default 1.
    - **Client field:** set to the repo's option
-   - **Description:** the full vulnerability details
+   - **Description:** the full vulnerability details (every CVE, for a group)
 2. Post to the repo's Slack channel, linking the task.
+
+Findings fixed by the same update (every CVE in one installed plugin version) are one notification: one task and one message, listing every CVE.
 
 All scripts live in `scripts/` and run directly (bun shebang, no dependencies).
 
@@ -112,4 +114,4 @@ A source writes a JSON file in this shape. Only `key`, `repo`, `severity` and `t
 }
 ```
 
-`key` must be stable across scans. It's the dedup identity. An optional `revision` field updates a task in place: when a delivered finding comes back with a different `revision`, its Asana task is updated (title, description, due date) and a fresh Slack message is posted, instead of a new task being created. Core findings use this: the key is `<repo>:wordpress-core:<installed version>` and the revision is the target version. So while a site stays on 7.0.4, a newer security release updates the same task. If the task was deleted in Asana, a new one is created. To add a source, add it to `SOURCES` in `scripts/lib.js` (repo config path, default findings path, board name) and give it its own block in the config.
+`key` must be stable across scans. It's the dedup identity. An optional `group` sends findings as one notification: all qualifying findings with the same `group` become one task and one Slack message, keyed by the group. The task lists every CVE and targets the lowest version that fixes them all (each CVE's lowest `fixedIn` above `installed`, then the highest of those). An optional `name` is the component's display name for the title. Plugin findings use `group: <repo>:<slug>:<installed version>` and the Wordfence plugin name. A group's revision is its set of CVE keys, so a new CVE for the same installed version updates the same task and posts a fresh Slack message. Findings already notified one by one before grouping are folded into the group, keeping the earliest of their tasks, so nothing is re-sent. An optional `revision` field updates a task in place: when a delivered finding comes back with a different `revision`, its Asana task is updated (title, description, due date) and a fresh Slack message is posted, instead of a new task being created. Core findings use this: the key is `<repo>:wordpress-core:<installed version>` and the revision is the target version. So while a site stays on 7.0.4, a newer security release updates the same task. If the task was deleted in Asana, a new one is created. To add a source, add it to `SOURCES` in `scripts/lib.js` (repo config path, default findings path, board name) and give it its own block in the config.

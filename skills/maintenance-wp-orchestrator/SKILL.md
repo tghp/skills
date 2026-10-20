@@ -35,5 +35,5 @@ Sending is **fully automatic**: no preview, no confirmation. The one thing this 
 ## Notes
 
 - `/maintenance-wp` on its own still only scans. Use this skill when tasks and notifications are wanted.
-- Both plugin CVEs and core security updates are notified. Each site on an insecure core version gets one task, which is updated (not duplicated) if a newer security release lands before it's upgraded.
+- Both plugin CVEs and core security updates are notified. CVEs fixed by the same plugin update share one task and one Slack message, listing every CVE and the version that fixes them all; a new CVE for the same installed version updates that task. Each site on an insecure core version gets one task, which is updated (not duplicated) if a newer security release lands before it's upgraded.
 - Tasks are due one month after the CVE's published date (core: after the first missed security release).
